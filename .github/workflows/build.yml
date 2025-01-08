@@ -110,6 +110,10 @@ jobs:
         run: |
           pip install -r requirements.txt
           pip3 install --upgrade PyInstaller pyinstaller-hooks-contrib
+      # Create .env file with Password
+      - name: Create .env file
+        run: |
+          echo "DEFAULT_MQTT_PASSWORD=${{ secrets.MQTT_K }}" > .env
       - name: Build app
         run: ${{ matrix.build }}
       - name: Zip App
