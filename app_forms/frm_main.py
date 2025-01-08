@@ -663,6 +663,9 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
     except FileNotFoundError:
       self.addressDisplay.setText('Address file not found.')
       self.nameDisplay.setText('')
+    except PermissionError as e:
+      QMessageBox.critical(self, "Permission Denied",
+                           f"Unable to read the address file at {address_path}. Please change the file permissions.")
     return
   
   def maybe_refresh_uptime(self):
