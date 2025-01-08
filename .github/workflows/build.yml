@@ -56,7 +56,15 @@ jobs:
             name: EdgeNodeLauncher-WIN32
             platformDependencies: ""
 
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
+            build: |
+              chmod +x build_scripts/unix_build.sh
+              ./build_scripts/unix_build.sh
+            zip: zip -r EdgeNodeLauncher-LINUX_Ubuntu-24.04.zip dist/*
+            name: EdgeNodeLauncher-LINUX_Ubuntu-24.04
+            platformDependencies: sudo apt-get update && sudo apt install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
+
+          - os: ubuntu-22.04
             build: |
               chmod +x build_scripts/unix_build.sh
               ./build_scripts/unix_build.sh
