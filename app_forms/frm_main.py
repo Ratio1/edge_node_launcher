@@ -29,7 +29,7 @@ from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QFont, QPixmap, QIcon
 import pyqtgraph as pg
 
-
+import services.messaging_service as messaging_service
 from utils.const import *
 from utils.docker import _DockerUtilsMixin
 from utils.updater import _UpdaterMixin
@@ -664,8 +664,8 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
       self.addressDisplay.setText('Address file not found.')
       self.nameDisplay.setText('')
     except PermissionError as e:
-      QMessageBox.critical(self, "Permission Denied",
-                           f"Unable to read the address file at {address_path}. Please change the file permissions.")
+      messaging_service.show_critical_message(self, "Permission Denied",
+                           f"Unable to read the file at {address_path}. Please change the file permissions.")
     return
   
   def maybe_refresh_uptime(self):
