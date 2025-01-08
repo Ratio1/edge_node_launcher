@@ -3,6 +3,7 @@ import sys
 import platform
 import subprocess
 import platform
+import base64
 
 from pathlib import Path
 from collections import OrderedDict
@@ -154,9 +155,9 @@ class _DockerUtilsMixin:
     self.docker_container_name = DOCKER_CONTAINER_NAME
     self.docker_tag = DOCKER_TAG
     self.node_id = self.get_node_id()
-    self.mqtt_host = DEFAULT_MQTT_HOST
-    self.mqtt_user = DEFAULT_MQTT_USER
-    self.mqtt_password = DEFAULT_MQTT_PASSWORD
+    self.mqtt_host = base64.b64decode(DEFAULT_MQTT_HOST).decode("utf-8")
+    self.mqtt_user = base64.b64decode(DEFAULT_MQTT_USER).decode("utf-8")
+    self.mqtt_password = base64.b64decode(DEFAULT_MQTT_PASSWORD).decode("utf-8")
     self._dev_mode = False    
     
     self.run_with_sudo = False    

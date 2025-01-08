@@ -1,3 +1,5 @@
+import os
+
 from ver import __VER__
 
 FULL_DEBUG = True
@@ -46,9 +48,9 @@ MAX_HISTORY_QUEUE = 5 * 60 // 10 # 5 minutes @ 10 seconds each hb
 
 AUTO_UPDATE_CHECK_INTERVAL = 60
 
-DEFAULT_MQTT_HOST = 'r9092118.ala.eu-central-1.emqxsl.com'
-DEFAULT_MQTT_USER = 'corenaeural'
-DEFAULT_MQTT_PASSWORD = ''
+DEFAULT_MQTT_HOST = 'cjkwOTIxMTguYWxhLmV1LWNlbnRyYWwtMS5lbXF4c2wuY29t'
+DEFAULT_MQTT_USER = 'Y29yZW5hZXVyYWw='
+DEFAULT_MQTT_PASSWORD = os.getenv("DEFAULT_MQTT_PASSWORD")
 
 
 ENV_TEMPLATE = '''
