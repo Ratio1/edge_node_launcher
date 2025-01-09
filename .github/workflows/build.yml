@@ -4,7 +4,7 @@ name: Multi-step multi-platform build
 
 on:
   push:
-    branches: ["main", "test-build"]
+    branches: ["main"]
   pull_request:
     branches: ["main"]
 
