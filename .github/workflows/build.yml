@@ -110,6 +110,12 @@ jobs:
         run: |
           pip install -r requirements.txt
           pip3 install --upgrade PyInstaller pyinstaller-hooks-contrib
+      # Replace the `****************` to MQTT_K in utils/const.py
+      - name: Replace placeholder in const.py
+        env:
+          MQTT_K: ${{ secrets.MQTT_K }}
+        run: |
+          sed -i 's/\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*/'"$MQTT_K"'/g' utils/const.py
       - name: Build app
         run: ${{ matrix.build }}
       - name: Zip App
