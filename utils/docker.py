@@ -393,6 +393,7 @@ class _DockerUtilsMixin:
   def launch_container(self):
     is_env_ok = self.__check_env_keys()
     if not is_env_ok:
+      self.add_log('Environment is not ok. Could not start the container.')
       return
     self.add_log('Updating image...')
     self.__maybe_docker_pull()
