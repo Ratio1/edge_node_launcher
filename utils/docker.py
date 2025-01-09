@@ -260,8 +260,11 @@ class _DockerUtilsMixin:
       result = self.__CMD + ['-p', '80:80', self.docker_image]
     else:
       result = self.__CMD + [self.docker_image]
-    self.add_log("Docker command: '{}'".format(" ".join(result)), debug=True)
-    return result
+
+    obfuscated_result = ['*' * len(self.mqtt_password) if self.mqtt_password in item else item for item in result]
+
+    self.add_log("Docker command: '{}'".format(" ".join(obfuscated_result)), debug=True)
+    return obfuscated_result
   
   
   def get_clean_cmd(self):
