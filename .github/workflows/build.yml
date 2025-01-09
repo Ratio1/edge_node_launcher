@@ -115,7 +115,12 @@ jobs:
         env:
           MQTT_K: ${{ secrets.MQTT_K }}
         run: |
-          sed -i 's/\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*/'"$MQTT_K"'/g' utils/const.py
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            $filePath = "utils/const.py"
+            (Get-Content $filePath) -replace '\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*', "${{ env.MQTT_K }}" | Set-Content $filePath
+          else
+            sed -i "s/\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*/${MQTT_K}/g" utils/const.py
+          fi
       - name: Build app
         run: ${{ matrix.build }}
       - name: Zip App
