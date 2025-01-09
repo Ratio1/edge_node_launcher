@@ -227,6 +227,9 @@ class _DockerUtilsMixin:
     self.__CMD += [
         '--rm', # remove the container when it exits
         '--env-file', '.env', #f'"{str(self.env_file)}"',  # pass the .env file to the container
+        '-e', f'MQTT_HOST={self.mqtt_host}', # pass the MQTT host to the container
+        '-e', f'MQTT_USER={self.mqtt_user}', # pass the MQTT user to the container
+        '-e', f'MQTT_PASSWORD={self.mqtt_password}', # pass the MQTT password to the container
         '-v', f'{DOCKER_VOLUME}:/edge_node/_local_cache', # mount the volume
         '--name', self.docker_container_name, '-d',  
     ]
@@ -309,23 +312,6 @@ class _DockerUtilsMixin:
     except FileNotFoundError:
       QMessageBox.warning(self, 'Error', '.env file not found.')
       return False
-
-    # Check if the EE_MQTT key is present and set
-    if 'EE_MQTT' not in env_vars or not env_vars['EE_MQTT']:
-      # Prompt the user for the MQTT password
-      password, ok = QInputDialog.getText(self, 'MQTT Broker password Required', 'Enter MQTT broker password:')
-      if ok and password:
-        # Update the env_vars dictionary with the new password
-        env_vars['EE_MQTT'] = password
-        # Resave the .env file with the updated key
-        with open(self.env_file, 'w') as file:
-          for key, value in env_vars.items():
-            file.write(f'{key}={value}\n')
-        QMessageBox.information(self, 'Success', 'MQTT password set successfully.')
-        return True
-      else:
-        QMessageBox.warning(self, 'Error', 'MQTT password is required to continue.')
-        return False
     return True
     
     
