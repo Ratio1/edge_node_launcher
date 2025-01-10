@@ -227,9 +227,9 @@ class _DockerUtilsMixin:
     self.__CMD += [
         '--rm', # remove the container when it exits
         '--env-file', '.env', #f'"{str(self.env_file)}"',  # pass the .env file to the container
-        '-e', f'MQTT_HOST={self.mqtt_host}', # pass the MQTT host to the container
-        '-e', f'MQTT_USER={self.mqtt_user}', # pass the MQTT user to the container
-        '-e', f'MQTT_PASSWORD={self.mqtt_password}', # pass the MQTT password to the container
+        '-e', f'EE_MQTT_HOST={self.mqtt_host}', # pass the MQTT host to the container
+        '-e', f'EE_MQTT_USER={self.mqtt_user}', # pass the MQTT user to the container
+        '-e', f'EE_MQTT={self.mqtt_password}', # pass the MQTT password to the container
         '-v', f'{DOCKER_VOLUME}:/edge_node/_local_cache', # mount the volume
         '--name', self.docker_container_name, '-d',  
     ]
@@ -246,9 +246,12 @@ class _DockerUtilsMixin:
       self.__CMD_CLEAN.insert(0, 'sudo')
       self.__CMD_STOP.insert(0, 'sudo')
       self.__CMD_INSPECT.insert(0, 'sudo')
-    
+
+    run_cmd = " ".join(self.get_cmd())
+    obfuscated_cmd = run_cmd.replace(self.mqtt_password, '*' * len(self.mqtt_password))
+
     self.add_log('Docker run command setup complete:')
-    self.add_log(' - Run:     {}'.format(" ".join(self.get_cmd())))
+    self.add_log(' - Run:     {}'.format(obfuscated_cmd))
     self.add_log(' - Clean:   {}'.format(" ".join(self.__CMD_CLEAN)))
     self.add_log(' - Stop:    {}'.format(" ".join(self.__CMD_STOP)))
     self.add_log(' - Inspect: {}'.format(" ".join(self.__CMD_INSPECT)))
@@ -260,12 +263,7 @@ class _DockerUtilsMixin:
       result = self.__CMD + ['-p', '80:80', self.docker_image]
     else:
       result = self.__CMD + [self.docker_image]
-
-    obfuscated_result = ['*' * len(self.mqtt_password) if self.mqtt_password in item else item for item in result]
-
-    self.add_log("Docker command: '{}'".format(" ".join(obfuscated_result)), debug=True)
-    return obfuscated_result
-  
+    return result
   
   def get_clean_cmd(self):
     return self.__CMD_CLEAN
