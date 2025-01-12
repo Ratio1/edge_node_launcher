@@ -15,7 +15,6 @@ jobs:
         with:
           fetch-depth: 0 # Fetches all history for all branches and tags
 
-      # Step to fetch the latest release version
       - name: Get latest release version
         id: latest-version
         run: |
@@ -23,7 +22,6 @@ jobs:
           echo "Latest tag is $LATEST_TAG"
           echo "LATEST_TAG=$LATEST_TAG" >> $GITHUB_ENV
 
-      # Step to read version.py and compare
       - name: Check version in ver.py
         id: check-version
         run: |
@@ -48,7 +46,6 @@ jobs:
         include:
           - os: windows-latest
             build: ./build_scripts/win32_build.bat
-            zip: Compress-Archive -Path dist/* -Destination EdgeNodeLauncher-WIN32.zip
             name: EdgeNodeLauncher-WIN32
             platformDependencies: ""
 
@@ -56,7 +53,6 @@ jobs:
             build: |
               chmod +x build_scripts/unix_build.sh
               ./build_scripts/unix_build.sh
-            zip: zip -r EdgeNodeLauncher-LINUX_Ubuntu-24.04.zip dist/*
             name: EdgeNodeLauncher-LINUX_Ubuntu-24.04
             platformDependencies: sudo apt-get update && sudo apt install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
 
@@ -64,7 +60,6 @@ jobs:
             build: |
               chmod +x build_scripts/unix_build.sh
               ./build_scripts/unix_build.sh
-            zip: zip -r EdgeNodeLauncher-LINUX_Ubuntu-22.04.zip dist/*
             name: EdgeNodeLauncher-LINUX_Ubuntu-22.04
             platformDependencies: sudo apt-get update && sudo apt install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
 
@@ -72,7 +67,6 @@ jobs:
             build: |
               chmod +x build_scripts/unix_build.sh
               ./build_scripts/unix_build.sh
-            zip: zip -r EdgeNodeLauncher-LINUX_Ubuntu-20.04.zip dist/*
             name: EdgeNodeLauncher-LINUX_Ubuntu-20.04
             platformDependencies: sudo apt-get update && sudo apt-get install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
 
@@ -91,7 +85,7 @@ jobs:
         run: |
           pip install -r requirements.txt
           pip3 install --upgrade PyInstaller pyinstaller-hooks-contrib
-      # Replace the `****************` to MQTT_K in utils/const.py
+
       - name: Replace placeholder in const.py (Windows)
         if: runner.os == 'Windows'
         env:
@@ -99,6 +93,7 @@ jobs:
         run: |
           $filePath = "utils/const.py"
           (Get-Content $filePath) -replace '\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*', "${{ env.MQTT_K }}" | Set-Content $filePath
+
       - name: Replace placeholder in const.py (Linux)
         if: runner.os == 'Linux'
         env:
@@ -109,11 +104,30 @@ jobs:
       - name: Build app
         run: ${{ matrix.build }}
 
-      - name: Zip App
-        run: ${{ matrix.zip }}
-
-      - name: Save zip File as artifact
+      - name: Save build artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: release
-          path: ./${{ matrix.name }}.zip
+          name: ${{ matrix.name }}-build
+          path: dist/*
+
+  collect-artifacts:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions: write-all
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: ${{ matrix.name }}-build
+          path: ./all-builds
+
+      - name: Create final zip
+        run: |
+          zip -r final-build-${{ github.event.pull_request.number }}-${{ github.sha }}.zip ./all-builds
+
+      - name: Upload final zip
+        uses: actions/upload-artifact@v3
+        with:
+          name: final-build-${{ github.event.pull_request.number }}-${{ github.sha }}
+          path: final-build-${{ github.event.pull_request.number }}-${{ github.sha }}.zip
