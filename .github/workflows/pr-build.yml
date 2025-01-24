@@ -86,21 +86,6 @@ jobs:
           pip install -r requirements.txt
           pip3 install --upgrade PyInstaller pyinstaller-hooks-contrib
 
-      - name: Replace placeholder in const.py (Windows)
-        if: runner.os == 'Windows'
-        env:
-          MQTT_K: ${{ secrets.MQTT_K }}
-        run: |
-          $filePath = "utils/const.py"
-          (Get-Content $filePath) -replace '\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*', "${{ env.MQTT_K }}" | Set-Content $filePath
-
-      - name: Replace placeholder in const.py (Linux)
-        if: runner.os == 'Linux'
-        env:
-          MQTT_K: ${{ secrets.MQTT_K }}
-        run: |
-          sed -i "s/\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*/${MQTT_K}/g" utils/const.py
-
       - name: Build app
         run: ${{ matrix.build }}
 
