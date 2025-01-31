@@ -89,6 +89,35 @@ jobs:
       - name: Build app
         run: ${{ matrix.build }}
 
+      - name: Sign Windows app
+        if: runner.os == 'Windows'
+        uses: sslcom/esigner-codesign@develop
+        with:
+          # Sign and timestamp code object.
+          command: sign
+          # SSL.com account username
+          username: ${{ secrets.SSL_USERNAME }}
+          # SSL.com account password.
+          password: ${{ secrets.SSL_PASSWORD }}
+          # Credential ID for signing certificate.
+          credential_id: ${{ secrets.SSL_CREDENTIAL_ID }}
+          # OAuth TOTP Secret (https://www.ssl.com/how-to/automate-esigner-ev-code-signing)
+          totp_secret: ${{ secrets.SSL_TOTP_SECRET }}
+          # Path of code object to be signed. (DLL, JAR, EXE, MSI files vb... )
+          file_path: ${{ github.workspace }}/dist/EdgeNodeLauncher.exe
+          # Directory where signed code object(s) will be written.
+          output_path: ${{ github.workspace }}/signed
+          # Scan code before sign
+          malware_block: false
+          # Environment Name, For Production 'PROD' or For Staging 'TEST'
+          environment_name: PROD
+
+      - name: Replace non-signed version with signed one
+        if: runner.os == 'Windows'
+        run: |
+          rm dist/EdgeNodeLauncher.exe
+          mv signed/EdgeNodeLauncher.exe dist/EdgeNodeLauncher.exe
+
       - name: Save build artifacts
         uses: actions/upload-artifact@v4
         with:
