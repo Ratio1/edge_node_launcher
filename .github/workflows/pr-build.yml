@@ -110,7 +110,7 @@ jobs:
           # Scan code before sign
           malware_block: false
           # Environment Name, For Production 'PROD' or For Staging 'TEST'
-          environment_name: TEST
+          environment_name: PROD
 
       - name: Replace non-signed version with signed one
         if: runner.os == 'Windows'
