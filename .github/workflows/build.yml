@@ -130,7 +130,7 @@ jobs:
           # Directory where signed code object(s) will be written.
           output_path: ${{ github.workspace }}/signed
           # Scan code before sign
-          malware_block: false
+          malware_block: true
           # Environment Name, For Production 'PROD' or For Staging 'TEST'
           environment_name: PROD
 
