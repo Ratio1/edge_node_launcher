@@ -202,3 +202,6 @@ DAPP_URLS = {
 
 DEFAULT_ENVIRONMENT = 'testnet'
 
+# Maximum length for aliases (node name and authorized addresses)
+MAX_ALIAS_LENGTH = 15
+

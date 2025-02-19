@@ -530,7 +530,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
                 continue  # Go back to editing
             
             # Check for long aliases
-            long_aliases = [(item['alias'], len(item['alias'])) for item in data_to_save if len(item['alias']) > 15]
+            long_aliases = [(item['alias'], len(item['alias'])) for item in data_to_save if len(item['alias']) > MAX_ALIAS_LENGTH]
             
             if not long_aliases:  # No long aliases, proceed with save
                 def save_success(data: dict) -> None:
@@ -551,7 +551,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
                 break  # Exit the loop after successful save
             
             # Show warning for long aliases
-            warning_msg = "The following aliases are too long (max 15 characters) and will be truncated:\n\n"
+            warning_msg = f"The following aliases are too long (max {MAX_ALIAS_LENGTH} characters) and will be truncated:\n\n"
             for alias, length in long_aliases:
                 warning_msg += f"• {alias} ({length} characters)\n"
             warning_msg += "\nDo you want to proceed with truncation?"
@@ -583,8 +583,8 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
             if confirm_dialog.exec_() == QDialog.Accepted:
                 # Truncate long aliases
                 for item in data_to_save:
-                    if len(item['alias']) > 15:
-                        item['alias'] = item['alias'][:15]
+                    if len(item['alias']) > MAX_ALIAS_LENGTH:
+                        item['alias'] = item['alias'][:MAX_ALIAS_LENGTH]
                 
                 def save_success(data: dict) -> None:
                     self.add_log('Successfully updated authorized addresses', debug=True)
@@ -987,7 +987,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
     dialog_layout = QVBoxLayout()
 
     # Add note about max length
-    note_label = QLabel("Note: Maximum node name length is 15 characters")
+    note_label = QLabel(f"Note: Maximum node name length is {MAX_ALIAS_LENGTH} characters")
     note_label.setStyleSheet("color: gray; font-style: italic;")
     dialog_layout.addWidget(note_label)
 
@@ -1014,7 +1014,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
 
   def validate_and_save_node_name(self, new_name: str, dialog: QDialog):
     new_name = new_name.strip()
-    if len(new_name) > 15:
+    if len(new_name) > MAX_ALIAS_LENGTH:
         # Show warning dialog
         warning_dialog = QDialog(dialog)
         warning_dialog.setWindowTitle("Warning: Name Too Long")
@@ -1022,7 +1022,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
         
         # Add message
         warning_msg = f"The node name is too long ({len(new_name)} characters).\n\n"
-        warning_msg += f"'{new_name}' will be truncated to '{new_name[:15]}'\n\n"
+        warning_msg += f"'{new_name}' will be truncated to '{new_name[:MAX_ALIAS_LENGTH]}'\n\n"
         warning_msg += "Do you want to proceed?"
         
         label = QLabel(warning_msg)
@@ -1044,7 +1044,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
         cancel_btn.clicked.connect(warning_dialog.reject)
         
         if warning_dialog.exec_() == QDialog.Accepted:
-            new_name = new_name[:15]
+            new_name = new_name[:MAX_ALIAS_LENGTH]
         else:
             return  # Return to editing if user cancels
     
