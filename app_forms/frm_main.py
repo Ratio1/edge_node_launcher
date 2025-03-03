@@ -27,10 +27,11 @@ from PyQt5.QtWidgets import (
   QComboBox,
   QMessageBox,
   QFileDialog,
-  QLineEdit
+  QLineEdit,
+  QProgressBar
 )
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QFont
+from PyQt5.QtCore import Qt, QTimer, QSize, QRect, QPoint
+from PyQt5.QtGui import QFont, QIcon, QColor, QPalette, QPainter, QBrush, QPen
 import pyqtgraph as pg
 
 from models.NodeInfo import NodeInfo
@@ -58,6 +59,54 @@ from models.ConfigApp import ConfigApp
 from widgets.HostSelector import HostSelector
 from widgets.ModeSwitch import ModeSwitch
 
+# Custom button class that ensures background color is applied
+class ColoredButton(QPushButton):
+    def __init__(self, text, parent=None, bg_color=None):
+        super().__init__(text, parent)
+        # If bg_color is provided, use it; otherwise use None to indicate we should use theme colors
+        self.bg_color = bg_color
+        
+    def paintEvent(self, event):
+        # Create a painter
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Determine if we're using dark or light theme
+        is_dark = self._current_stylesheet == DARK_STYLESHEET
+        colors = DARK_COLORS if is_dark else LIGHT_COLORS
+        
+        # Use provided bg_color if available, otherwise use theme color
+        bg_color = self.bg_color if self.bg_color else QColor(colors["button_bg"])
+        
+        # Draw the background
+        painter.setBrush(QBrush(bg_color))
+        painter.setPen(Qt.NoPen)
+        painter.drawRoundedRect(self.rect(), 15, 15)
+        
+        # Draw the border
+        border_color = QColor(colors["button_border"])
+        painter.setPen(QPen(border_color, 2))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRoundedRect(self.rect().adjusted(1, 1, -1, -1), 15, 15)
+        
+        # Draw the text
+        text_color = QColor(colors["text_color"])
+        painter.setPen(QPen(text_color))
+        painter.drawText(self.rect(), Qt.AlignCenter, self.text())
+        
+    def set_bg_color(self, color):
+        self.bg_color = color
+        self.update()
+        
+    @property
+    def _current_stylesheet(self):
+        # Get the current stylesheet from the parent window
+        parent = self.parent()
+        while parent:
+            if hasattr(parent, '_current_stylesheet'):
+                return parent._current_stylesheet
+            parent = parent.parent()
+        return DARK_STYLESHEET  # Default to dark stylesheet
 
 def get_platform_and_os_info():
   platform_info = platform.platform()
@@ -101,8 +150,9 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
     self.__current_node_ver = -1
     self.__display_uptime = None
 
-
+    # Initialize stylesheet
     self._current_stylesheet = DARK_STYLESHEET
+    
     self.__last_plot_data = None
     self.__last_auto_update_check = 0
     
@@ -115,7 +165,11 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
     # Initialize config manager for container configurations
     self.config_manager = ConfigManager()
     
+    # Initialize UI
     self.initUI()
+    
+    # Make sure stylesheet is applied to all widgets
+    self.apply_stylesheet()
 
     self.__cwd = os.getcwd()
     
@@ -273,23 +327,27 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
     top_button_area.addLayout(container_selector_layout)
 
     # Launch Edge Node button
-    self.toggleButton = QPushButton(LAUNCH_CONTAINER_BUTTON_TEXT)
+    self.toggleButton = ColoredButton(LAUNCH_CONTAINER_BUTTON_TEXT, self)
+    self.toggleButton.setObjectName("toggleButton")
     self.toggleButton.clicked.connect(self.toggle_container)
     top_button_area.addWidget(self.toggleButton)
 
     # Docker download button right under Launch Edge Node
-    self.docker_download_button = QPushButton(DOWNLOAD_DOCKER_BUTTON_TEXT)
+    self.docker_download_button = ColoredButton(DOWNLOAD_DOCKER_BUTTON_TEXT, self)
+    self.docker_download_button.setObjectName("dockerDownloadButton")
     self.docker_download_button.setToolTip(DOCKER_DOWNLOAD_TOOLTIP)
     self.docker_download_button.clicked.connect(self.open_docker_download)
     top_button_area.addWidget(self.docker_download_button)
 
     # dApp button
-    self.dapp_button = QPushButton(DAPP_BUTTON_TEXT)
+    self.dapp_button = ColoredButton(DAPP_BUTTON_TEXT, self)
+    self.dapp_button.setObjectName("dappButton")
     self.dapp_button.clicked.connect(self.dapp_button_clicked)
     top_button_area.addWidget(self.dapp_button)
 
     # Explorer button
-    self.explorer_button = QPushButton(EXPLORER_BUTTON_TEXT)
+    self.explorer_button = ColoredButton(EXPLORER_BUTTON_TEXT, self)
+    self.explorer_button.setObjectName("explorerButton")
     self.explorer_button.clicked.connect(self.explorer_button_clicked)
     top_button_area.addWidget(self.explorer_button)
     
@@ -372,15 +430,17 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
     
     ## buttons
     # Add Rename Node button
-    self.renameNodeButton = QPushButton(RENAME_NODE_BUTTON_TEXT)
+    self.renameNodeButton = ColoredButton(RENAME_NODE_BUTTON_TEXT, self)
+    self.renameNodeButton.setObjectName("renameNodeButton")
     self.renameNodeButton.clicked.connect(self.show_rename_dialog)
     bottom_button_area.addWidget(self.renameNodeButton)
 
     # Toggle theme button
-    self.themeToggleButton = QPushButton(LIGHT_DASHBOARD_BUTTON_TEXT)
+    self.themeToggleButton = ColoredButton(LIGHT_DASHBOARD_BUTTON_TEXT, self)
+    self.themeToggleButton.setObjectName("themeToggleButton")
     # self.themeToggleButton.setCheckable(True)
     self.themeToggleButton.clicked.connect(self.toggle_theme)
-    bottom_button_area.addWidget(self.themeToggleButton)    
+    bottom_button_area.addWidget(self.themeToggleButton)
     
     # add a checkbox item to force debug
     self.force_debug_checkbox = QCheckBox('Force Debug Mode')
@@ -471,18 +531,50 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
     return
   
   def toggle_theme(self):
+    """Toggle between dark and light themes."""
+    # Switch the current stylesheet
     if self._current_stylesheet == DARK_STYLESHEET:
       self._current_stylesheet = LIGHT_STYLESHEET
       self.themeToggleButton.setText(DARK_DASHBOARD_BUTTON_TEXT)
       self.host_selector.apply_stylesheet(False)  # Light theme
+      self.add_log("Switched to light theme", debug=True)
+      
+      # Update button colors for light theme
+      for button in self.findChildren(ColoredButton):
+          if button.objectName() == "toggleButton":
+              # Skip toggle button, it's handled by update_toggle_button_text
+              continue
+          # Reset to None to use theme colors from LIGHT_COLORS
+          button.set_bg_color(None)
     else:
       self._current_stylesheet = DARK_STYLESHEET
       self.themeToggleButton.setText(LIGHT_DASHBOARD_BUTTON_TEXT)
       self.host_selector.apply_stylesheet(True)  # Dark theme
+      self.add_log("Switched to dark theme", debug=True)
+      
+      # Update button colors for dark theme
+      for button in self.findChildren(ColoredButton):
+          if button.objectName() == "toggleButton":
+              # Skip toggle button, it's handled by update_toggle_button_text
+              continue
+          # Reset to None to use theme colors from DARK_COLORS
+          button.set_bg_color(None)
+    
+    # Apply the new stylesheet
     self.apply_stylesheet()
+    
+    # Update plots with the new theme
     self.plot_graphs()
+    
+    # Update text colors
     self.change_text_color()
-    return  
+    
+    # Force update of toggle button text to ensure proper styling
+    self.update_toggle_button_text()
+    
+    # Force a repaint to ensure all styles are applied
+    self.repaint()
+    return
 
   def change_text_color(self):
     if self._current_stylesheet == DARK_STYLESHEET:
@@ -491,37 +583,68 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
       self.force_debug_checkbox.setStyleSheet(CHECKBOX_STYLE_TEMPLATE.format(text_color=LIGHT_COLORS["text_color"]))
 
   def apply_stylesheet(self):
+    """Apply the current stylesheet to all widgets in the application."""
     is_dark = self._current_stylesheet == DARK_STYLESHEET
-    self.setStyleSheet(self._current_stylesheet)
+    
+    # Log the current stylesheet for debugging
+    self.add_log(f"Applying {'dark' if is_dark else 'light'} stylesheet", debug=True)
+    
+    # Create a custom stylesheet with explicit button styling
+    custom_stylesheet = self._current_stylesheet
+    
+    # # Add explicit styling for buttons that will override any other styles
+    # if is_dark:
+    #     custom_stylesheet += """
+    #     QPushButton {
+    #         background-color: yellow;
+    #         color: black !important;
+    #         border: 2px solid #87CEEB !important;
+    #         padding: 10px 20px !important;
+    #         font-size: 16px !important;
+    #         margin: 4px 2px !important;
+    #         border-radius: 15px !important;
+    #     }
+    #     QPushButton:hover {
+    #         background-color: #f10000 !important;
+    #     }
+    #     """
+    # else:
+    #     custom_stylesheet += """
+    #     QPushButton {
+    #         background-color: #00FF00 !important;
+    #         color: black !important;
+    #         border: 2px solid #6185f7 !important;
+    #         padding: 10px 20px !important;
+    #         font-size: 16px !important;
+    #         margin: 4px 2px !important;
+    #         border-radius: 15px !important;
+    #     }
+    #     QPushButton:hover {
+    #         background-color: #FF0000 !important;
+    #     }
+    #     """
+    
+    # Apply the custom stylesheet to the main window
+    self.setStyleSheet(custom_stylesheet)
+    
+    # Apply stylesheet to specific widgets that need it
     self.logView.setStyleSheet(self._current_stylesheet)
-    self.cpu_plot.setBackground(None)  # Reset the background to let the stylesheet take effect
+    
+    # Reset plot backgrounds to let the stylesheet take effect
+    self.cpu_plot.setBackground(None)
     self.memory_plot.setBackground(None)
     self.gpu_plot.setBackground(None)
     self.gpu_memory_plot.setBackground(None)
     
-    # Get the appropriate color set based on the theme
-    colors = DARK_COLORS if is_dark else LIGHT_COLORS
-    
-    # Apply styles using templates from const.py
-    combobox_style = COMBOBOX_STYLE_TEMPLATE.format(
-        text_color=colors["text_color"],
-        bg_color=colors["bg_color"],
-        border_color=colors["border_color"],
-        hover_color=colors["hover_color"]
-    )
-    
-    button_style = BUTTON_STYLE_TEMPLATE.format(
-        text_color=colors["text_color"],
-        bg_color=colors["bg_color"],
-        border_color=colors["border_color"],
-        hover_color=colors["hover_color"]
-    )
-    
-    self.container_combo.setStyleSheet(combobox_style)
-    self.add_node_button.setStyleSheet(button_style)
-    
+    # Update the mode switch if it exists
     if hasattr(self, 'mode_switch'):
-      self.mode_switch.apply_stylesheet(is_dark)
+        self.mode_switch.apply_stylesheet(is_dark)
+    
+    # Force a repaint to ensure all styles are applied
+    self.repaint()
+    
+    # Log that stylesheet application is complete
+    self.add_log("Stylesheet application complete", debug=True)
     return
 
   def toggle_container(self):
@@ -549,7 +672,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
             
             # Update button state immediately
             self.toggleButton.setText(LAUNCH_CONTAINER_BUTTON_TEXT)
-            self.toggleButton.setStyleSheet("background-color: green; color: white;")
+            # self.toggleButton.setStyleSheet("background-color: green; color: white;")
         else:
             self.add_log(f'Starting container {container_name}...')
             
@@ -578,7 +701,8 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
     current_index = self.container_combo.currentIndex()
     if current_index < 0:
         self.toggleButton.setText(LAUNCH_CONTAINER_BUTTON_TEXT)
-        self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+        # Update button color to gray
+        self.toggleButton.set_bg_color(QColor("gray"))
         self.toggleButton.setEnabled(False)
         return
         
@@ -586,7 +710,8 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
     container_name = self.container_combo.itemData(current_index)
     if not container_name:
         self.toggleButton.setText(LAUNCH_CONTAINER_BUTTON_TEXT)
-        self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+        # Update button color to gray
+        self.toggleButton.set_bg_color(QColor("gray"))
         self.toggleButton.setEnabled(False)
         return
     
@@ -598,7 +723,8 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
         config_container = self.config_manager.get_container(container_name)
         if config_container:
             self.toggleButton.setText(LAUNCH_CONTAINER_BUTTON_TEXT)
-            self.toggleButton.setStyleSheet("background-color: green; color: white;")
+            # Use green color for launch button
+            self.toggleButton.set_bg_color(QColor("green"))
             self.toggleButton.setEnabled(True)
             return
     
@@ -611,11 +737,13 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
     self.toggleButton.setEnabled(True)
     if is_running:
         self.toggleButton.setText(STOP_CONTAINER_BUTTON_TEXT)
-        self.toggleButton.setStyleSheet("background-color: red; color: white;")
+        # Use red color for stop button
+        self.toggleButton.set_bg_color(QColor("red"))
         self.add_log(f"Container {container_name} is running, setting button to red", debug=True)
     else:
         self.toggleButton.setText(LAUNCH_CONTAINER_BUTTON_TEXT)
-        self.toggleButton.setStyleSheet("background-color: green; color: white;")
+        # Use green color for launch button
+        self.toggleButton.set_bg_color(QColor("green"))
         self.add_log(f"Container {container_name} is not running, setting button to green", debug=True)
     return
   
@@ -1179,7 +1307,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
               else:
                 self.add_log(f"No r1node container found on host {host_name}")
                 self.toggleButton.setText("No Container Found")
-                self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+                # self.toggleButton.setStyleSheet("background-color: gray; color: white;")
                 self.toggleButton.setEnabled(False)
             else:
               self.add_log(f"Error checking for containers on host {host_name}")
@@ -1212,7 +1340,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
       # Host is offline
       self.add_log(f"Host {host_name} is offline")
       self.toggleButton.setText("Host Offline")
-      self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+      # self.toggleButton.setStyleSheet("background-color: gray; color: white;")
       self.toggleButton.setEnabled(False)
 
   def _refresh_local_containers(self):
@@ -1534,10 +1662,11 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
             plot.setLabel('left', '')
             plot.setLabel('bottom', '')
     
-    # Update toggle button state and color
+    # Update toggle button state but don't override global stylesheet
     if hasattr(self, 'toggleButton'):
         self.toggleButton.setText(LAUNCH_CONTAINER_BUTTON_TEXT)
-        self.toggleButton.setStyleSheet("background-color: green; color: white;")
+        # Use green color for launch button
+        self.toggleButton.set_bg_color(QColor("green"))
 
   def _on_host_selected(self, host_name: str):
     """Handle host selection."""
@@ -1560,7 +1689,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
         
     # Disable button and show checking status
     self.toggleButton.setText("Checking Host...")
-    self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+    # self.toggleButton.setStyleSheet("background-color: gray; color: white;")
     self.toggleButton.setEnabled(False)
     
     self.add_log(f"Host selected: {host_name}, checking status...")
@@ -1570,7 +1699,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
         self.add_log(f"Failed to get SSH command for host: {host_name}")
         self.toast.show_notification(NotificationType.ERROR, f"Failed to get SSH command for host: {host_name}")
         self.toggleButton.setText("SSH Error")
-        self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+        # self.toggleButton.setStyleSheet("background-color: gray; color: white;")
         self.toggleButton.setEnabled(False)
         return
 
@@ -1599,7 +1728,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
     if not is_online:
         self.add_log(f"Host {host_name} is offline")
         self.toggleButton.setText("Host Offline")
-        self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+        # self.toggleButton.setStyleSheet("background-color: gray; color: white;")
         self.toggleButton.setEnabled(False)
         self.toast.show_notification(NotificationType.ERROR, f"Host {host_name} is offline")
         return
@@ -1631,7 +1760,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
             if return_code != 0:
                 self.add_log(f"Docker not found on host {host_name}")
                 self.toggleButton.setText("Docker Not Found")
-                self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+                # self.toggleButton.setStyleSheet("background-color: gray; color: white;")
                 self.toggleButton.setEnabled(False)
                 self.toast.show_notification(NotificationType.ERROR, f"Docker not found on host {host_name}")
                 return
@@ -1641,7 +1770,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
             if return_code != 0:
                 self.add_log(f"Docker daemon not running on host {host_name}")
                 self.toggleButton.setText("Docker Not Running")
-                self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+                # self.toggleButton.setStyleSheet("background-color: gray; color: white;")
                 self.toggleButton.setEnabled(False)
                 self.toast.show_notification(NotificationType.ERROR, f"Docker daemon not running on host {host_name}")
                 return
@@ -1662,7 +1791,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
                 if result.returncode != 0:
                     self.add_log("Docker not found locally")
                     self.toggleButton.setText("Docker Not Found")
-                    self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+                    # self.toggleButton.setStyleSheet("background-color: gray; color: white;")
                     self.toggleButton.setEnabled(False)
                     self.toast.show_notification(NotificationType.ERROR, "Docker not found locally")
                     return
@@ -1671,7 +1800,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
                 if result.returncode != 0:
                     self.add_log("Docker daemon not running locally")
                     self.toggleButton.setText("Docker Not Running")
-                    self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+                    # self.toggleButton.setStyleSheet("background-color: gray; color: white;")
                     self.toggleButton.setEnabled(False)
                     self.toast.show_notification(NotificationType.ERROR, "Docker daemon not running locally")
                     return
@@ -1680,7 +1809,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
             except Exception as e:
                 self.add_log(f"Error checking Docker: {str(e)}")
                 self.toggleButton.setText("Docker Check Failed")
-                self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+                # self.toggleButton.setStyleSheet("background-color: gray; color: white;")
                 self.toggleButton.setEnabled(False)
                 self.toast.show_notification(NotificationType.ERROR, f"Failed to check Docker: {str(e)}")
                 return
@@ -1704,14 +1833,14 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
                 else:
                     self.add_log(f"No r1node container found on host {host_name}")
                     self.toggleButton.setText("No Container Found")
-                    self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+                    # self.toggleButton.setStyleSheet("background-color: gray; color: white;")
                     self.toggleButton.setEnabled(False)
                     self.toast.show_notification(NotificationType.WARNING, f"No r1node container found on host {host_name}")
                     return
             else:
                 self.add_log(f"Error checking for containers on host {host_name}")
                 self.toggleButton.setText("Container Check Failed")
-                self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+                # self.toggleButton.setStyleSheet("background-color: gray; color: white;")
                 self.toggleButton.setEnabled(False)
                 self.toast.show_notification(NotificationType.ERROR, f"Failed to check for containers on host {host_name}")
                 return
@@ -1735,7 +1864,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
         
         self.add_log(f"Connection failed to host {host_name}: {str(e)}")
         self.toggleButton.setText("Connection Failed")
-        self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+        # self.toggleButton.setStyleSheet("background-color: gray; color: white;")
         self.toggleButton.setEnabled(False)
         self.toast.show_notification(NotificationType.ERROR, f"Failed to connect to host {host_name}")
         return
@@ -1786,7 +1915,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
       
       # Disable toggle button until a host is selected and verified
       self.toggleButton.setText("Select Host...")
-      self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+      # self.toggleButton.setStyleSheet("background-color: gray; color: white;")
       self.toggleButton.setEnabled(False)
       
       # Check the initial host if one is selected
@@ -2183,7 +2312,8 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
     
     # Update button state to show container is running
     self.toggleButton.setText(STOP_CONTAINER_BUTTON_TEXT)
-    self.toggleButton.setStyleSheet("background-color: red; color: white;")
+    # Use red color for stop button
+    self.toggleButton.set_bg_color(QColor("red"))
     self.toggleButton.setEnabled(True)
     
     # Log the setup
@@ -2247,7 +2377,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
               else:
                 self.add_log(f"No r1node container found on host {host_name}")
                 self.toggleButton.setText("No Container Found")
-                self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+                # self.toggleButton.setStyleSheet("background-color: gray; color: white;")
                 self.toggleButton.setEnabled(False)
             else:
               self.add_log(f"Error checking for containers on host {host_name}")
@@ -2280,7 +2410,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
       # Host is offline
       self.add_log(f"Host {host_name} is offline")
       self.toggleButton.setText("Host Offline")
-      self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+      # self.toggleButton.setStyleSheet("background-color: gray; color: white;")
       self.toggleButton.setEnabled(False)
 
   def _on_host_selected(self, host_name: str):
@@ -2305,7 +2435,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
     # Pro mode - continue with SSH operations
     # Disable button and show checking status
     self.toggleButton.setText("Checking Host...")
-    self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+    # self.toggleButton.setStyleSheet("background-color: gray; color: white;")
     self.toggleButton.setEnabled(False)
     
     self.add_log(f"Host selected: {host_name}, checking status...")
@@ -2315,7 +2445,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
         self.add_log(f"Failed to get SSH command for host: {host_name}")
         self.toast.show_notification(NotificationType.ERROR, f"Failed to get SSH command for host: {host_name}")
         self.toggleButton.setText("SSH Error")
-        self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+        # self.toggleButton.setStyleSheet("background-color: gray; color: white;")
         self.toggleButton.setEnabled(False)
         return
 
@@ -2344,7 +2474,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
     if not is_online:
         self.add_log(f"Host {host_name} is offline")
         self.toggleButton.setText("Host Offline")
-        self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+        # self.toggleButton.setStyleSheet("background-color: gray; color: white;")
         self.toggleButton.setEnabled(False)
         self.toast.show_notification(NotificationType.ERROR, f"Host {host_name} is offline")
         return
@@ -2375,7 +2505,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
                 if result.returncode != 0:
                     self.add_log("Docker not found locally")
                     self.toggleButton.setText("Docker Not Found")
-                    self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+                    # self.toggleButton.setStyleSheet("background-color: gray; color: white;")
                     self.toggleButton.setEnabled(False)
                     self.toast.show_notification(NotificationType.ERROR, "Docker not found locally")
                     return
@@ -2384,7 +2514,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
                 if result.returncode != 0:
                     self.add_log("Docker daemon not running locally")
                     self.toggleButton.setText("Docker Not Running")
-                    self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+                    # self.toggleButton.setStyleSheet("background-color: gray; color: white;")
                     self.toggleButton.setEnabled(False)
                     self.toast.show_notification(NotificationType.ERROR, "Docker daemon not running locally")
                     return
@@ -2405,7 +2535,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
             except Exception as e:
                 self.add_log(f"Error checking Docker: {str(e)}")
                 self.toggleButton.setText("Docker Check Failed")
-                self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+                # self.toggleButton.setStyleSheet("background-color: gray; color: white;")
                 self.toggleButton.setEnabled(False)
                 self.toast.show_notification(NotificationType.ERROR, f"Failed to check Docker: {str(e)}")
                 return
@@ -2427,7 +2557,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
         if return_code != 0:
             self.add_log(f"Docker not found on host {host_name}")
             self.toggleButton.setText("Docker Not Found")
-            self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+            # self.toggleButton.setStyleSheet("background-color: gray; color: white;")
             self.toggleButton.setEnabled(False)
             self.toast.show_notification(NotificationType.ERROR, f"Docker not found on host {host_name}")
             return
@@ -2437,7 +2567,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
         if return_code != 0:
             self.add_log(f"Docker daemon not running on host {host_name}")
             self.toggleButton.setText("Docker Not Running")
-            self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+            # self.toggleButton.setStyleSheet("background-color: gray; color: white;")
             self.toggleButton.setEnabled(False)
             self.toast.show_notification(NotificationType.ERROR, f"Docker daemon not running on host {host_name}")
             return
@@ -2461,14 +2591,14 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
             else:
                 self.add_log(f"No r1node container found on host {host_name}")
                 self.toggleButton.setText("No Container Found")
-                self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+                # self.toggleButton.setStyleSheet("background-color: gray; color: white;")
                 self.toggleButton.setEnabled(False)
                 self.toast.show_notification(NotificationType.WARNING, f"No r1node container found on host {host_name}")
                 return
         else:
             self.add_log(f"Error checking for containers on host {host_name}")
             self.toggleButton.setText("Container Check Failed")
-            self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+            # self.toggleButton.setStyleSheet("background-color: gray; color: white;")
             self.toggleButton.setEnabled(False)
             self.toast.show_notification(NotificationType.ERROR, f"Failed to check for containers on host {host_name}")
             return
@@ -2489,7 +2619,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
         
         self.add_log(f"Connection failed to host {host_name}: {str(e)}")
         self.toggleButton.setText("Connection Failed")
-        self.toggleButton.setStyleSheet("background-color: gray; color: white;")
+        # self.toggleButton.setStyleSheet("background-color: gray; color: white;")
         self.toggleButton.setEnabled(False)
         self.toast.show_notification(NotificationType.ERROR, f"Failed to connect to host {host_name}")
         return
@@ -2588,10 +2718,11 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
             plot.setLabel('left', '')
             plot.setLabel('bottom', '')
     
-    # Update toggle button state and color
+    # Update toggle button state but don't override global stylesheet
     if hasattr(self, 'toggleButton'):
         self.toggleButton.setText(LAUNCH_CONTAINER_BUTTON_TEXT)
-        self.toggleButton.setStyleSheet("background-color: green; color: white;")
+        # Use green color for launch button
+        self.toggleButton.set_bg_color(QColor("green"))
 
   def clear_remote_connection(self):
     """Clear the remote SSH connection."""

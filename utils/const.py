@@ -197,9 +197,9 @@ LIGHT_COLORS = {
     "bg_color": "white",
     "border_color": "#cccccc",
     "hover_color": "#f5f5f5",
-    "button_bg": "#D3D3D3",
-    "button_border": "#A9A9A9",
-    "button_hover": "#A9A9A9",
+    "button_bg": "#00FF00",  # Green for buttons
+    "button_border": "#6185f7",
+    "button_hover": "#A9A9A9",  # Red hover color
     "progress_border": "#D3D3D3",
     "progress_chunk": "#D3D3D3",
     "widget_bg": "#F0F0F0",
@@ -265,6 +265,10 @@ CHECKBOX_STYLE_TEMPLATE = """
 """
 
 DARK_STYLESHEET = """
+  QWidget {
+    background-color: #0D1F2D;
+  }
+  
   QPushButton {
     background-color: #1E90FF; 
     color: white; 
@@ -348,6 +352,10 @@ DARK_STYLESHEET = """
 """
 
 LIGHT_STYLESHEET = """
+  QWidget {
+    background-color: #F0F0F0;
+  }
+  
   QPushButton {
     background-color: #D3D3D3;
     color: black;
@@ -398,10 +406,6 @@ LIGHT_STYLESHEET = """
     color: black;
   }
 
-  PlotWidget .plotLabel {
-    color: black;
-  }
-  
   QComboBox {
     color: black;
     background-color: white;
