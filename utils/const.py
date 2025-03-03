@@ -209,54 +209,6 @@ LIGHT_COLORS = {
     "plot_border": "#A9A9A9"
 }
 
-# ComboBox style template
-COMBOBOX_STYLE_TEMPLATE = """
-    QComboBox {{
-        color: {text_color};
-        background-color: {bg_color};
-        border: 1px solid {border_color};
-        border-radius: 4px;
-        padding: 4px;
-        min-width: 100px;
-    }}
-    QComboBox:hover {{
-        background-color: {hover_color};
-        border: 1px solid #4CAF50;
-    }}
-    QComboBox::drop-down {{
-        border: none;
-        width: 20px;
-    }}
-    QComboBox::down-arrow {{
-        image: none;
-        border-left: 5px solid transparent;
-        border-right: 5px solid transparent;
-        border-top: 5px solid {text_color};
-        margin-right: 8px;
-    }}
-    QComboBox QAbstractItemView {{
-        color: {text_color};
-        background-color: {bg_color};
-        selection-background-color: {hover_color};
-        selection-color: {text_color};
-    }}
-"""
-
-# Button style template
-BUTTON_STYLE_TEMPLATE = """
-    QPushButton {{
-        color: {text_color};
-        background-color: {bg_color};
-        border: 1px solid {border_color};
-        border-radius: 4px;
-        padding: 4px 12px;
-    }}
-    QPushButton:hover {{
-        background-color: {hover_color};
-        border: 1px solid #4CAF50;
-    }}
-"""
-
 # Checkbox style template
 CHECKBOX_STYLE_TEMPLATE = """
     QCheckBox {{
@@ -270,7 +222,7 @@ DARK_STYLESHEET = """
   }
   
   QPushButton {
-    background-color: #1E90FF; 
+    background-color: #00FF00; 
     color: white; 
     border: 2px solid #87CEEB; 
     padding: 10px 20px; 

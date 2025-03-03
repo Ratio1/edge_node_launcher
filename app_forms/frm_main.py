@@ -319,7 +319,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
     container_selector_layout.addWidget(self.container_combo, stretch=1)
     
     # Add Node button
-    self.add_node_button = QPushButton("Add Node")
+    self.add_node_button = ColoredButton("Add Node")
     self.add_node_button.setFont(QFont("Courier New", 10))
     self.add_node_button.clicked.connect(self.show_add_node_dialog)
     container_selector_layout.addWidget(self.add_node_button)
