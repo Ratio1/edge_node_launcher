@@ -99,6 +99,13 @@ jobs:
         uses: actions/setup-python@v2
         with:
           python-version: "3.10.11"
+      - name: Read app version
+        id: app_version
+        shell: bash
+        run: |
+          VERSION=$(cat ver.py | grep -o "'.*'" | tr -d "'")
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
       - run: ${{ matrix.platformDependencies }}
       - name: Setup env
         run: |
@@ -141,7 +148,7 @@ jobs:
       - name: Save zip File as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: release
+          name: release-${{ matrix.name }}-v${{ env.VERSION }}
           path: ./${{ matrix.name }}.zip
           overwrite: true
 
@@ -149,7 +156,7 @@ jobs:
         uses: svenstaro/upload-release-action@master
         with:
           file: ./${{ matrix.name }}.zip
-          asset_name: ${{ matrix.name }}.zip
+          asset_name: ${{ matrix.name }}-v${{ env.VERSION }}.zip
           repo_name: ${{ github.repository }}
           overwrite: true
 
@@ -167,9 +174,9 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: release
+          pattern: release-*-v*
           path: release
-          overwrite: true
+          merge-multiple: true
 
       - run: ls release
 
