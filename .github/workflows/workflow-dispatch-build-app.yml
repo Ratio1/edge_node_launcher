@@ -97,6 +97,13 @@ jobs:
         uses: actions/setup-python@v2
         with:
           python-version: "3.10.11"
+      - name: Read app version
+        id: app_version
+        shell: bash
+        run: |
+          VERSION=$(cat ver.py | grep -o "'.*'" | tr -d "'")
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
       - run: ${{ matrix.platformDependencies }}
       - name: Setup env
         run: |
@@ -138,7 +145,7 @@ jobs:
       - name: Save build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.name }}-build-${{ github.event.pull_request.number }}-${{ github.sha }}
+          name: ${{ matrix.name }}-v${{ env.VERSION }}-${{ github.sha }}
           path: dist/*
 
   collect-artifacts:
@@ -147,26 +154,41 @@ jobs:
     permissions: write-all
 
     steps:
-      - name: Download build artifacts
+      - uses: actions/checkout@v3
+      - name: Read app version
+        id: app_version
+        shell: bash
+        run: |
+          VERSION=$(cat ver.py | grep -o "'.*'" | tr -d "'")
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Download Windows build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: EdgeNodeLauncher-WIN32-build-${{ github.event.pull_request.number }}-${{ github.sha }}
+          name: EdgeNodeLauncher-WIN32-v${{ env.VERSION }}-${{ github.sha }}
           path: ./all-builds/EdgeNodeLauncher-WIN32
 
-      - name: Download build artifacts
+      - name: Download Ubuntu 24.04 build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: EdgeNodeLauncher-LINUX_Ubuntu-24.04-build-${{ github.event.pull_request.number }}-${{ github.sha }}
+          name: EdgeNodeLauncher-LINUX_Ubuntu-24.04-v${{ env.VERSION }}-${{ github.sha }}
           path: ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-24.04
 
-      - name: Download build artifacts
+      - name: Download Ubuntu 22.04 build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: EdgeNodeLauncher-LINUX_Ubuntu-22.04-build-${{ github.event.pull_request.number }}-${{ github.sha }}
+          name: EdgeNodeLauncher-LINUX_Ubuntu-22.04-v${{ env.VERSION }}-${{ github.sha }}
           path: ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-22.04
 
-      - name: Download build artifacts
+      - name: Download Ubuntu 20.04 build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: EdgeNodeLauncher-LINUX_Ubuntu-20.04-build-${{ github.event.pull_request.number }}-${{ github.sha }}
+          name: EdgeNodeLauncher-LINUX_Ubuntu-20.04-v${{ env.VERSION }}-${{ github.sha }}
           path: ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-20.04
+
+      - name: Download macOS build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: EdgeNodeLauncher-OSX-arm64-v${{ env.VERSION }}-${{ github.sha }}
+          path: ./all-builds/EdgeNodeLauncher-OSX-arm64
