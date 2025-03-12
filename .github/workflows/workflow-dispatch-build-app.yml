@@ -233,7 +233,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}-v${{ env.VERSION }}-${{ github.sha }}
-          path: dist/*
+          path: |
+            dist/*.exe
+            dist/*.msi
+            dist/*
+          if-no-files-found: error
+          retention-days: 7
 
   collect-artifacts:
     needs: build
@@ -250,11 +255,28 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
+      # Download artifacts with explicit path patterns
       - name: Download Windows build artifacts
         uses: actions/download-artifact@v4
         with:
           name: EdgeNodeLauncher-WIN32-v${{ env.VERSION }}-${{ github.sha }}
           path: ./all-builds/EdgeNodeLauncher-WIN32
+          
+      # Extra verification for Windows artifacts
+      - name: Verify Windows artifacts
+        run: |
+          echo "Windows artifact contents:"
+          find ./all-builds/EdgeNodeLauncher-WIN32 -type f | sort
+          
+          # Check for MSI and EXE files specifically
+          MSI_COUNT=$(find ./all-builds/EdgeNodeLauncher-WIN32 -name "*.msi" | wc -l)
+          EXE_COUNT=$(find ./all-builds/EdgeNodeLauncher-WIN32 -name "*.exe" | wc -l)
+          
+          echo "Found $MSI_COUNT MSI files and $EXE_COUNT EXE files"
+          
+          if [ "$MSI_COUNT" -eq 0 ] || [ "$EXE_COUNT" -eq 0 ]; then
+            echo "WARNING: Missing Windows artifacts!"
+          fi
 
       - name: Download Ubuntu 24.04 build artifacts
         uses: actions/download-artifact@v4
@@ -280,84 +302,77 @@ jobs:
           name: EdgeNodeLauncher-OSX-arm64-v${{ env.VERSION }}-${{ github.sha }}
           path: ./all-builds/EdgeNodeLauncher-OSX-arm64
 
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: v${{ env.VERSION }}
-          release_name: Edge Node Launcher v${{ env.VERSION }}
-          draft: true
-          prerelease: false
-          body: |
-            Edge Node Launcher Release v${{ env.VERSION }}
-            
-            Built from branch: ${{ github.event.inputs.branch }}
-            Commit: ${{ github.sha }}
+      # Debug: List all downloaded artifacts contents
+      - name: List all downloaded artifacts
+        run: |
+          echo "======== AVAILABLE ARTIFACTS ========"
+          echo "Windows artifacts (EdgeNodeLauncher-WIN32):"
+          find ./all-builds/EdgeNodeLauncher-WIN32 -type f -name "*.exe" -o -name "*.msi" | sort
+          echo ""
+          
+          echo "Ubuntu 24.04 artifacts:"
+          find ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-24.04 -type f | sort
+          echo ""
+          
+          echo "Ubuntu 22.04 artifacts:"
+          find ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-22.04 -type f | sort
+          echo ""
+          
+          echo "Ubuntu 20.04 artifacts:"
+          find ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-20.04 -type f | sort
+          echo ""
+          
+          echo "macOS artifacts:"
+          find ./all-builds/EdgeNodeLauncher-OSX-arm64 -type f | sort
+          echo ""
+          
+          echo "======== ARTIFACTS SUMMARY ========"
+          echo "Windows MSI: $(find ./all-builds/EdgeNodeLauncher-WIN32 -name "*.msi" | wc -l) files"
+          echo "Windows EXE: $(find ./all-builds/EdgeNodeLauncher-WIN32 -name "*.exe" | wc -l) files"
+          echo "Ubuntu 24.04: $(find ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-24.04 -type f | wc -l) files"
+          echo "Ubuntu 22.04: $(find ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-22.04 -type f | wc -l) files"
+          echo "Ubuntu 20.04: $(find ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-20.04 -type f | wc -l) files"
+          echo "macOS: $(find ./all-builds/EdgeNodeLauncher-OSX-arm64 -type f | wc -l) files"
 
-      # Upload Windows MSI file directly
-      - name: Upload Windows MSI
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Optional: Upload the artifacts again with more user-friendly names for easier downloading
+      - name: Upload Windows MSI for easy download
+        uses: actions/upload-artifact@v4
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./all-builds/EdgeNodeLauncher-WIN32/EdgeNodeLauncher.msi
-          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-Windows.msi
-          asset_content_type: application/x-msi
-
-      # Upload Windows executable
-      - name: Upload Windows EXE
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: EdgeNodeLauncher-v${{ env.VERSION }}-Windows.msi
+          path: ./all-builds/EdgeNodeLauncher-WIN32/*.msi
+          if-no-files-found: error
+          
+      - name: Upload Windows EXE for easy download
+        uses: actions/upload-artifact@v4
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./all-builds/EdgeNodeLauncher-WIN32/EdgeNodeLauncher.exe
-          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-Windows.exe
-          asset_content_type: application/vnd.microsoft.portable-executable
-
-      # Upload Linux Ubuntu 24.04 binary
-      - name: Upload Ubuntu 24.04 Binary
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: EdgeNodeLauncher-v${{ env.VERSION }}-Windows.exe
+          path: ./all-builds/EdgeNodeLauncher-WIN32/*.exe
+          if-no-files-found: error
+          
+      - name: Upload Ubuntu 24.04 Binary for easy download
+        uses: actions/upload-artifact@v4
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-24.04/EdgeNodeLauncher
-          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-Ubuntu-24.04
-          asset_content_type: application/octet-stream
-
-      # Upload Linux Ubuntu 22.04 binary
-      - name: Upload Ubuntu 22.04 Binary
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: EdgeNodeLauncher-v${{ env.VERSION }}-Ubuntu-24.04.AppImage
+          path: ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-24.04/EdgeNodeLauncher
+          if-no-files-found: error
+          
+      - name: Upload Ubuntu 22.04 Binary for easy download
+        uses: actions/upload-artifact@v4
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-22.04/EdgeNodeLauncher
-          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-Ubuntu-22.04
-          asset_content_type: application/octet-stream
-
-      # Upload Linux Ubuntu 20.04 binary
-      - name: Upload Ubuntu 20.04 Binary
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: EdgeNodeLauncher-v${{ env.VERSION }}-Ubuntu-22.04.AppImage
+          path: ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-22.04/EdgeNodeLauncher
+          if-no-files-found: error
+          
+      - name: Upload Ubuntu 20.04 Binary for easy download
+        uses: actions/upload-artifact@v4
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-20.04/EdgeNodeLauncher
-          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-Ubuntu-20.04
-          asset_content_type: application/octet-stream
-
-      # Upload macOS binary
-      - name: Upload macOS Binary
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: EdgeNodeLauncher-v${{ env.VERSION }}-Ubuntu-20.04.AppImage
+          path: ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-20.04/EdgeNodeLauncher
+          if-no-files-found: error
+          
+      - name: Upload macOS Binary for easy download
+        uses: actions/upload-artifact@v4
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./all-builds/EdgeNodeLauncher-OSX-arm64/EdgeNodeLauncher
-          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-macOS-arm64
-          asset_content_type: application/octet-stream
+          name: EdgeNodeLauncher-v${{ env.VERSION }}-macOS-arm64.app
+          path: ./all-builds/EdgeNodeLauncher-OSX-arm64/EdgeNodeLauncher
+          if-no-files-found: error
