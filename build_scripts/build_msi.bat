@@ -22,8 +22,11 @@ echo ^<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"^> >> wix\product.wxs
 echo   ^<Product Id="*" Name="EdgeNodeLauncher" Language="1033" Version="1.0.0.0" Manufacturer="YourCompany" UpgradeCode="61DAB716-7CE9-4F67-BC46-7ADB96FB074A"^> >> wix\product.wxs
 echo     ^<Package InstallerVersion="200" Compressed="yes" /^> >> wix\product.wxs
 echo     ^<MediaTemplate EmbedCab="yes" /^> >> wix\product.wxs
+echo     ^<Icon Id="AppIcon.ico" SourceFile="%OUTPUT_DIR%\%APP_NAME%.exe" /^> >> wix\product.wxs
+echo     ^<Property Id="ARPPRODUCTICON" Value="AppIcon.ico" /^> >> wix\product.wxs
 echo     ^<Feature Id="ProductFeature" Title="EdgeNodeLauncher" Level="1"^> >> wix\product.wxs
 echo       ^<ComponentRef Id="ApplicationComponent" /^> >> wix\product.wxs
+echo       ^<ComponentRef Id="DesktopShortcutComponent" /^> >> wix\product.wxs
 echo     ^</Feature^> >> wix\product.wxs
 echo     ^<Directory Id="TARGETDIR" Name="SourceDir"^> >> wix\product.wxs
 echo       ^<Directory Id="ProgramFilesFolder"^> >> wix\product.wxs
@@ -33,7 +36,21 @@ echo             ^<File Id="ApplicationExe" Source="%OUTPUT_DIR%\%APP_NAME%.exe"
 echo           ^</Component^> >> wix\product.wxs
 echo         ^</Directory^> >> wix\product.wxs
 echo       ^</Directory^> >> wix\product.wxs
+echo       ^<Directory Id="DesktopFolder" Name="Desktop"^> >> wix\product.wxs
+echo         ^<Component Id="DesktopShortcutComponent" Guid="*"^> >> wix\product.wxs
+echo           ^<Shortcut Id="DesktopShortcut" >> wix\product.wxs
+echo                     Name="EdgeNodeLauncher" >> wix\product.wxs
+echo                     Description="Launch the Edge Node Launcher application" >> wix\product.wxs
+echo                     Target="[INSTALLDIR]%APP_NAME%.exe" >> wix\product.wxs
+echo                     WorkingDirectory="INSTALLDIR" >> wix\product.wxs
+echo                     Icon="AppIcon.ico" /^> >> wix\product.wxs
+echo           ^<RemoveFolder Id="DesktopFolder" On="uninstall" /^> >> wix\product.wxs
+echo           ^<RegistryValue Root="HKCU" Key="Software\EdgeNodeLauncher" Name="installed" Type="integer" Value="1" KeyPath="yes" /^> >> wix\product.wxs
+echo         ^</Component^> >> wix\product.wxs
+echo       ^</Directory^> >> wix\product.wxs
 echo     ^</Directory^> >> wix\product.wxs
+echo     ^<Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" /^> >> wix\product.wxs
+echo     ^<UIRef Id="WixUI_InstallDir" /^> >> wix\product.wxs
 echo   ^</Product^> >> wix\product.wxs
 echo ^</Wix^> >> wix\product.wxs
 
