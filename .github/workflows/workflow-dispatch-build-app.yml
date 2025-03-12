@@ -279,3 +279,85 @@ jobs:
         with:
           name: EdgeNodeLauncher-OSX-arm64-v${{ env.VERSION }}-${{ github.sha }}
           path: ./all-builds/EdgeNodeLauncher-OSX-arm64
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ env.VERSION }}
+          release_name: Edge Node Launcher v${{ env.VERSION }}
+          draft: true
+          prerelease: false
+          body: |
+            Edge Node Launcher Release v${{ env.VERSION }}
+            
+            Built from branch: ${{ github.event.inputs.branch }}
+            Commit: ${{ github.sha }}
+
+      # Upload Windows MSI file directly
+      - name: Upload Windows MSI
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./all-builds/EdgeNodeLauncher-WIN32/EdgeNodeLauncher.msi
+          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-Windows.msi
+          asset_content_type: application/x-msi
+
+      # Upload Windows executable
+      - name: Upload Windows EXE
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./all-builds/EdgeNodeLauncher-WIN32/EdgeNodeLauncher.exe
+          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-Windows.exe
+          asset_content_type: application/vnd.microsoft.portable-executable
+
+      # Upload Linux Ubuntu 24.04 binary
+      - name: Upload Ubuntu 24.04 Binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-24.04/EdgeNodeLauncher
+          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-Ubuntu-24.04
+          asset_content_type: application/octet-stream
+
+      # Upload Linux Ubuntu 22.04 binary
+      - name: Upload Ubuntu 22.04 Binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-22.04/EdgeNodeLauncher
+          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-Ubuntu-22.04
+          asset_content_type: application/octet-stream
+
+      # Upload Linux Ubuntu 20.04 binary
+      - name: Upload Ubuntu 20.04 Binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-20.04/EdgeNodeLauncher
+          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-Ubuntu-20.04
+          asset_content_type: application/octet-stream
+
+      # Upload macOS binary
+      - name: Upload macOS Binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./all-builds/EdgeNodeLauncher-OSX-arm64/EdgeNodeLauncher
+          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-macOS-arm64
+          asset_content_type: application/octet-stream
