@@ -255,6 +255,52 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
+      # Download artifacts with explicit path patterns
+      - name: Download Windows build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: EdgeNodeLauncher-WIN32-v${{ env.VERSION }}-${{ github.sha }}
+          path: ./all-builds/EdgeNodeLauncher-WIN32
+          
+      # Extra verification for Windows artifacts
+      - name: Verify Windows artifacts
+        run: |
+          echo "Windows artifact contents:"
+          find ./all-builds/EdgeNodeLauncher-WIN32 -type f | sort
+          
+          # Check for MSI and EXE files specifically
+          MSI_COUNT=$(find ./all-builds/EdgeNodeLauncher-WIN32 -name "*.msi" | wc -l)
+          EXE_COUNT=$(find ./all-builds/EdgeNodeLauncher-WIN32 -name "*.exe" | wc -l)
+          
+          echo "Found $MSI_COUNT MSI files and $EXE_COUNT EXE files"
+          
+          if [ "$MSI_COUNT" -eq 0 ] || [ "$EXE_COUNT" -eq 0 ]; then
+            echo "WARNING: Missing Windows artifacts!"
+          fi
+
+      - name: Download Ubuntu 24.04 build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: EdgeNodeLauncher-LINUX_Ubuntu-24.04-v${{ env.VERSION }}-${{ github.sha }}
+          path: ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-24.04
+
+      - name: Download Ubuntu 22.04 build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: EdgeNodeLauncher-LINUX_Ubuntu-22.04-v${{ env.VERSION }}-${{ github.sha }}
+          path: ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-22.04
+
+      - name: Download Ubuntu 20.04 build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: EdgeNodeLauncher-LINUX_Ubuntu-20.04-v${{ env.VERSION }}-${{ github.sha }}
+          path: ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-20.04
+
+      - name: Download macOS build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: EdgeNodeLauncher-OSX-arm64-v${{ env.VERSION }}-${{ github.sha }}
+          path: ./all-builds/EdgeNodeLauncher-OSX-arm64
 
       # Debug: List all downloaded artifacts contents
       - name: List all downloaded artifacts
