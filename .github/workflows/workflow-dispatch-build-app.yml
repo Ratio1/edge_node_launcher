@@ -189,7 +189,7 @@ jobs:
           # OAuth TOTP Secret (https://www.ssl.com/how-to/automate-esigner-ev-code-signing)
           totp_secret: ${{ secrets.SSL_TOTP_SECRET }}
           # Path of code object to be signed. (DLL, JAR, EXE, MSI files vb... )
-          file_path: ${{ github.workspace }}/dist/EdgeNodeLauncher.exe
+          file_path: ${{ github.workspace }}/dist/EdgeNodeLauncher.msi
           # Directory where signed code object(s) will be written.
           output_path: ${{ github.workspace }}/signed
           # Scan code before sign
