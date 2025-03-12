@@ -54,7 +54,7 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            build: ./build_scripts/win32_build.bat
+            build: ./build_scripts/win32_build.bat --both
             name: EdgeNodeLauncher-WIN32
             platformDependencies: ""
 
@@ -112,6 +112,48 @@ jobs:
 
       - name: Build app
         run: ${{ matrix.build }}
+
+        
+      - name: Windows-specific debug logging
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          echo "Windows-specific directory listing:"
+          echo "Workspace directory (CMD):"
+          dir ${{ github.workspace }}
+          dir ${{ github.workspace }}\..
+          echo "Dist directory (CMD):"
+          dir ${{ github.workspace }}\dist
+          echo "Checking specific EXE exists:"
+          if exist "${{ github.workspace }}\dist\EdgeNodeLauncher.exe" (echo "EdgeNodeLauncher.exe exists") else (echo "EdgeNodeLauncher.exe NOT found")
+          
+      - name: Verify app.manifest exists
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          echo "Checking for app.manifest file"
+          if exist "app.manifest" (
+            echo "app.manifest exists, displaying content:"
+            type app.manifest
+          ) else (
+            echo "ERROR: app.manifest not found!"
+            exit 1
+          )
+          
+      - name: Check for spec file
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          Write-Host "Checking for EdgeNodeLauncher.spec file"
+          if (Test-Path "${{ github.workspace }}\EdgeNodeLauncher.spec") {
+            Write-Host "Found EdgeNodeLauncher.spec. Displaying content:"
+            Get-Content "${{ github.workspace }}\EdgeNodeLauncher.spec"
+          } else {
+            Write-Host "EdgeNodeLauncher.spec not found in workspace."
+            Get-ChildItem -Path "${{ github.workspace }}" -Recurse -Filter "*.spec" | ForEach-Object {
+              Write-Host "Found spec file: $($_.FullName)"
+            }
+          }
 
       - name: Sign Windows app
         if: runner.os == 'Windows'
