@@ -5,7 +5,7 @@ import json
 class ReleaseChecker:
   
   def __init__(self) -> None:
-    self.cfg_releases_repo_url = "https://api.github.com/repos/NaeuralEdgeProtocol/edge_node_launcher"
+    self.cfg_releases_repo_url = "https://api.github.com/repos/Ratio1/edge_node_launcher"
     self.cfg_nr_previous_releases = 10
     self.requests = requests
     return

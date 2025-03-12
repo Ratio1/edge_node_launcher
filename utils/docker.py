@@ -18,6 +18,7 @@ from .const import *
 from .docker_commands import DockerCommandHandler
 from .ssh_service import SSHService, SSHConfig
 from .service_manager import ServiceManager
+from widgets.dialogs.DockerCheckDialog import DockerCheckDialog
 
 def get_user_folder():
   """
@@ -209,7 +210,7 @@ class _DockerUtilsMixin:
     
     # Base commands without remote prefix
     base_clean = ['docker', 'rm', self.docker_container_name]
-    base_stop = ['docker', 'stop', self.docker_container_name]
+    base_stop = ['docker', 'stop']
     base_inspect = ['docker', 'inspect', '--format', '{{.State.Running}}', self.docker_container_name]
     
     if self._use_gpus:
@@ -223,8 +224,12 @@ class _DockerUtilsMixin:
     if len(str_gpus) > 0:
       base_run += [str_gpus]
     
+    if platform.machine() in ['aarch64', 'arm64']:
+        base_run += ['--platform', 'linux/amd64']
+    
     base_run += [
         '--rm',
+        '--gpus', 'all',
         '--env-file', '.env',
         '-v', f'{DOCKER_VOLUME}:/edge_node/_local_cache',
         '--name', self.docker_container_name, '-d',
@@ -302,7 +307,7 @@ class _DockerUtilsMixin:
   
   
   def get_node_id(self):
-    return 'naeural_' + str(uuid4())[:8]
+    return 'ratio1_' + str(uuid4())[:8]
   
 
   def __check_env_keys(self):
@@ -333,6 +338,14 @@ class _DockerUtilsMixin:
     return
 
   def check_docker(self):
+    """Check if Docker is installed and running.
+    
+    Returns:
+        tuple: (is_installed, is_running, error_message)
+            - is_installed: bool indicating if Docker is installed
+            - is_running: bool indicating if Docker daemon is running
+            - error_message: str with error details if any, None otherwise
+    """
     self.add_log('Checking Docker status...')
     try:
         # First check if Docker is installed
@@ -349,21 +362,11 @@ class _DockerUtilsMixin:
             subprocess.check_output(['docker', 'info'], stderr=subprocess.STDOUT, universal_newlines=True)
         
         self.add_log("Docker daemon is running")
-        return True
+        return True, True, None
     except FileNotFoundError:
-        QMessageBox.warning(
-            self, 'Docker Check', 
-            'Docker is not installed. Please install Docker and restart the application.\n\n'
-            'Click the "Download Docker" button to visit the Docker installation page.'
-        )
-        return False
+        return False, False, "Docker is not installed"
     except subprocess.CalledProcessError:
-        QMessageBox.warning(
-            self, 'Docker Check', 
-            'Docker daemon is not running. Please start Docker and try again.\n\n'
-            'If Docker is not installed, click the "Download Docker" button to visit the Docker installation page.'
-        )
-        return False
+        return True, False, "Docker daemon is not running"
 
 
   def is_container_running(self):
@@ -481,10 +484,12 @@ class _DockerUtilsMixin:
     return
 
 
-  def stop_container(self):
+  def stop_container(self, container_name=None):
     try:
-      self.add_log('Stopping Edge Node container...')
-      stop_cmd = self.get_stop_command()
+      name_to_stop = container_name or self.docker_container_name
+      self.add_log(f'Stopping Edge Node container {name_to_stop}...')
+      stop_cmd = self.get_stop_command() + [name_to_stop]  # Append container name to stop command
+      
       if os.name == 'nt':
         subprocess.check_call(stop_cmd, creationflags=subprocess.CREATE_NO_WINDOW)
       else:
@@ -495,6 +500,9 @@ class _DockerUtilsMixin:
       try:
         self.add_log('Cleaning Edge Node container...')
         clean_cmd = self.get_clean_cmd()
+        if container_name:
+          # Replace the default container name with the provided one
+          clean_cmd = clean_cmd[:-1] + [name_to_stop]
         if os.name == 'nt':
           subprocess.check_call(clean_cmd, creationflags=subprocess.CREATE_NO_WINDOW)
         else:
@@ -507,30 +515,6 @@ class _DockerUtilsMixin:
       self.add_log('Edge Node container stop failed.')
     return
 
-
-  def delete_and_restart(self):
-    if not self.is_container_running():
-        QMessageBox.warning(self, 'Restart Edge Node', 'Edge Node is not running.')
-    else:
-        # now we ask for confirmation
-        reply = QMessageBox.question(self, 'Restart Edge Node', 'Are you sure you want to reset the local node?', QMessageBox.Yes | QMessageBox.No)
-        if reply == QMessageBox.Yes:
-            try:
-                # Call reset_address with callbacks
-                def on_success(data):
-                    self.stop_container()
-                    self.launch_container()
-                    QMessageBox.information(self, 'Restart Edge Node', f'{E2_PEM_FILE} deleted and Edge Node restarted.')
-                
-                def on_error(error):
-                    self.stop_container()
-                    self.launch_container()
-                    QMessageBox.warning(self, 'Restart Edge Node', f'Failed to do proper cleanup: {error}')
-                
-                self.docker_commands.reset_address(on_success, on_error)
-            except Exception as e:
-                QMessageBox.warning(self, 'Restart Edge Node', f'Failed to reset Edge Node: {e}')
-    return
 
   def set_remote_connection(self, ssh_command: str):
     """Set up remote connection using SSH command."""

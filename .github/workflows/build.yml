@@ -54,7 +54,7 @@ jobs:
         include:
           - os: windows-latest
             build: ./build_scripts/win32_build.bat
-            zip: Compress-Archive -Path dist/* -Destination EdgeNodeLauncher-WIN32.zip
+            zip: Compress-Archive -Path (Get-ChildItem -Path dist) -DestinationPath EdgeNodeLauncher-WIN32.zip
             name: EdgeNodeLauncher-WIN32
             platformDependencies: ""
 
@@ -62,7 +62,7 @@ jobs:
             build: |
               chmod +x build_scripts/unix_build.sh
               ./build_scripts/unix_build.sh
-            zip: zip -r EdgeNodeLauncher-LINUX_Ubuntu-24.04.zip dist/*
+            zip: cd dist && zip -r ../EdgeNodeLauncher-LINUX_Ubuntu-24.04.zip *
             name: EdgeNodeLauncher-LINUX_Ubuntu-24.04
             platformDependencies: sudo apt-get update && sudo apt install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
 
@@ -70,7 +70,7 @@ jobs:
             build: |
               chmod +x build_scripts/unix_build.sh
               ./build_scripts/unix_build.sh
-            zip: zip -r EdgeNodeLauncher-LINUX_Ubuntu-22.04.zip dist/*
+            zip: cd dist && zip -r ../EdgeNodeLauncher-LINUX_Ubuntu-22.04.zip *
             name: EdgeNodeLauncher-LINUX_Ubuntu-22.04
             platformDependencies: sudo apt-get update && sudo apt install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
 
@@ -78,7 +78,7 @@ jobs:
             build: |
               chmod +x build_scripts/unix_build.sh
               ./build_scripts/unix_build.sh
-            zip: zip -r EdgeNodeLauncher-LINUX_Ubuntu-20.04.zip dist/*
+            zip: cd dist && zip -r ../EdgeNodeLauncher-LINUX_Ubuntu-20.04.zip *
             name: EdgeNodeLauncher-LINUX_Ubuntu-20.04
             platformDependencies: sudo apt-get update && sudo apt-get install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
 
@@ -86,7 +86,7 @@ jobs:
             build: |
               chmod +x build_scripts/unix_build.sh
               ./build_scripts/unix_build.sh
-            zip: zip -r EdgeNodeLauncher-OSX-arm64.zip dist/*
+            zip: cd dist && zip -r ../EdgeNodeLauncher-OSX-arm64.zip *
             name: EdgeNodeLauncher-OSX-arm64
 
     name: Build installers ${{ matrix.os }}

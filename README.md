@@ -35,7 +35,7 @@ Edge Node Launcher is a desktop application designed to manage the containerized
 ## Platform-Specific Instructions
 
 ### macOS (Apple Silicon)
-1. Download the latest `EdgeNodeLauncher-OSX-arm64-[version].zip` from the [Releases page](https://github.com/NaeuralEdgeProtocol/edge_node_launcher/releases)
+1. Download the latest `EdgeNodeLauncher-OSX-arm64-[version].zip` from the [Releases page](https://github.com/Ratio1/edge_node_launcher/releases)
 2. Extract the zip file
 3. If you encounter security restrictions when trying to open the app:
    - Open Terminal
@@ -78,7 +78,7 @@ Edge Node Launcher is a desktop application designed to manage the containerized
 
 ## Binary installation
 
-Download from [Releases page](https://github.com/NaeuralEdgeProtocol/edge_node_launcher/releases) and run the app for your platform.
+Download from [Releases page](https://github.com/Ratio1/edge_node_launcher/releases) and run the app for your platform.
 
 ## Source code install
 
@@ -86,7 +86,7 @@ To install and run Edge Node Launcher, follow these steps:
 
 1. Clone the repository:
    ```sh
-   git clone https://github.com/NaeuralEdgeProtocol/edge_node_launcher.git
+   git clone https://github.com/Ratio1/edge_node_launcher.git
    cd edge_node_launcher
    ```
 
@@ -168,7 +168,7 @@ Additionally, you can cite this repository as follows:
   year = {2024},
   publisher = {GitHub},
   journal = {GitHub repository},
-  howpublished = {\url{https://github.com/NaeuralEdgeProtocol/edge_node_launcher}},
+  howpublished = {\url{https://github.com/Ratio1/edge_node_launcher}},
 }
 ```
 

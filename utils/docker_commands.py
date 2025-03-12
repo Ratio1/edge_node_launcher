@@ -1,13 +1,105 @@
 import os
 import json
 import subprocess
+from typing import Dict, List, Optional
+from dataclasses import dataclass
+from datetime import datetime
 from PyQt5.QtCore import QThread, pyqtSignal
+import logging
+import platform
 
 from models.NodeInfo import NodeInfo
 from models.NodeHistory import NodeHistory
 from models.StartupConfig import StartupConfig
 from models.ConfigApp import ConfigApp
+from utils.const import DOCKER_VOLUME_PATH
 
+# Docker configuration
+DOCKER_IMAGE = "ratio1/edge_node:testnet"
+DOCKER_TAG = "latest"
+
+@dataclass
+class ContainerInfo:
+    """Container information storage class"""
+    container_name: str
+    volume_name: str
+    created_at: str
+    last_used: str
+
+class ContainerRegistry:
+    """Manages persistence of container and volume information"""
+    def __init__(self, storage_path: str = None):
+        self.storage_path = storage_path or os.path.expanduser("~/.edge_node/containers.json")
+        self._ensure_storage_exists()
+        self.containers: Dict[str, ContainerInfo] = self._load_containers()
+
+    def _ensure_storage_exists(self) -> None:
+        """Ensure storage directory and file exist"""
+        os.makedirs(os.path.dirname(self.storage_path), exist_ok=True)
+        if not os.path.exists(self.storage_path):
+            self._save_containers({})
+
+    def _load_containers(self) -> Dict[str, ContainerInfo]:
+        """Load containers from storage"""
+        try:
+            with open(self.storage_path, 'r') as f:
+                data = json.load(f)
+                return {
+                    name: ContainerInfo(**info) 
+                    for name, info in data.items()
+                }
+        except Exception:
+            return {}
+
+    def _save_containers(self, containers: dict) -> None:
+        """Save containers to storage"""
+        with open(self.storage_path, 'w') as f:
+            json.dump(containers, f, indent=2)
+
+    def add_container(self, container_name: str, volume_name: str) -> None:
+        """Add a new container to registry"""
+        now = datetime.now().isoformat()
+        self.containers[container_name] = ContainerInfo(
+            container_name=container_name,
+            volume_name=volume_name,
+            created_at=now,
+            last_used=now
+        )
+        self._save_containers({
+            name: vars(info)
+            for name, info in self.containers.items()
+        })
+
+    def remove_container(self, container_name: str) -> None:
+        """Remove a container from registry"""
+        if container_name in self.containers:
+            del self.containers[container_name]
+            self._save_containers({
+                name: vars(info)
+                for name, info in self.containers.items()
+            })
+
+    def get_container_info(self, container_name: str) -> Optional[ContainerInfo]:
+        """Get container information"""
+        return self.containers.get(container_name)
+
+    def get_volume_name(self, container_name: str) -> Optional[str]:
+        """Get volume name for container"""
+        info = self.get_container_info(container_name)
+        return info.volume_name if info else None
+
+    def update_last_used(self, container_name: str) -> None:
+        """Update last used timestamp for container"""
+        if container_name in self.containers:
+            self.containers[container_name].last_used = datetime.now().isoformat()
+            self._save_containers({
+                name: vars(info)
+                for name, info in self.containers.items()
+            })
+
+    def list_containers(self) -> List[ContainerInfo]:
+        """List all registered containers"""
+        return list(self.containers.values())
 
 class DockerCommandThread(QThread):
     """ Thread to run a Docker command """
@@ -31,50 +123,245 @@ class DockerCommandThread(QThread):
             # Add remote prefix if needed
             if self.remote_ssh_command:
                 full_command = self.remote_ssh_command + full_command
+                
+            # Always log the command before executing it
+            logging.info(f"Executing command: {' '.join(full_command)}")
+            if self.input_data:
+                logging.info(f"With input data: {self.input_data[:100]}{'...' if len(self.input_data) > 100 else ''}")
 
-            if os.name == 'nt':
-                result = subprocess.run(
-                    full_command,
-                    input=self.input_data,
-                    capture_output=True,
-                    text=True,
-                    creationflags=subprocess.CREATE_NO_WINDOW
-                )
-            else:
-                result = subprocess.run(
-                    full_command,
-                    input=self.input_data,
-                    capture_output=True,
-                    text=True
-                )
-
-            if result.returncode != 0:
-                self.command_error.emit(f"Command failed: {result.stderr}\nCommand: {' '.join(full_command)}\nInput data: {self.input_data}")
-                return
-
-            # TODO: Improve output handling.
-            # Maybe implement it in a way that the command itself can specify the output format.
-            # For reset_address and commands starting with change_alias, treat output as plain text
-            if self.command == 'reset_address' or self.command.startswith('change_alias'):
-                self.command_finished.emit({'message': result.stdout.strip()})
-                return
+            # Use a longer timeout for remote commands
+            timeout = 20 if self.remote_ssh_command else 10  # Increased timeout for remote commands
 
             try:
-                data = json.loads(result.stdout)
-                self.command_finished.emit(data)
-            except json.JSONDecodeError:
-                self.command_error.emit(f"Error decoding JSON response. Raw output: {result.stdout}")
-            except Exception as e:
-                self.command_error.emit(f"Error processing response: {str(e)}\nRaw output: {result.stdout}")
+                if os.name == 'nt':
+                    result = subprocess.run(
+                        full_command,
+                        input=self.input_data,
+                        capture_output=True,
+                        text=True,
+                        timeout=timeout,
+                        creationflags=subprocess.CREATE_NO_WINDOW
+                    )
+                else:
+                    result = subprocess.run(
+                        full_command,
+                        input=self.input_data,
+                        capture_output=True,
+                        text=True,
+                        timeout=timeout
+                    )
+                if result.returncode != 0:
+                    self.command_error.emit(f"Command failed: {result.stderr}\nCommand: {' '.join(full_command)}\nInput data: {self.input_data}")
+                    return
+                
+                # If command is reset_address or change_alias, process output as plain text
+                if self.command == 'reset_address' or self.command.startswith('change_alias'):
+                    self.command_finished.emit({'message': result.stdout.strip()})
+                    return
+                
+                try:
+                    data = json.loads(result.stdout)
+                    self.command_finished.emit(data)
+                except json.JSONDecodeError:
+                    self.command_error.emit(f"Error decoding JSON response. Raw output: {result.stdout}")
+                except Exception as e:
+                    self.command_error.emit(f"Error processing response: {str(e)}\nRaw output: {result.stdout}")
+            except subprocess.TimeoutExpired as e:
+                error_msg = f"Command timed out after {e.timeout} seconds: {' '.join(full_command)}"
+                print(error_msg)
+                if hasattr(e, 'stdout') and e.stdout:
+                    print(f"  stdout: {e.stdout}")
+                if hasattr(e, 'stderr') and e.stderr:
+                    print(f"  stderr: {e.stderr}")
+                self.command_error.emit(error_msg)
         except Exception as e:
-            self.command_error.emit(f"Error executing command: {str(e)}\nCommand: {' '.join(full_command)}\nInput data: {self.input_data}")
+            error_msg = f"Error executing command: {str(e)}\nCommand: {' '.join(full_command) if 'full_command' in locals() else self.command}\nInput data: {self.input_data}"
+            print(error_msg)
+            import traceback
+            traceback.print_exc()
+            self.command_error.emit(error_msg)
 
 class DockerCommandHandler:
     """ Handles Docker commands """
-    def __init__(self, container_name: str):
+    def __init__(self, container_name: str = None):
+        """Initialize the handler.
+        
+        Args:
+            container_name: Name of container to manage
+        """
         self.container_name = container_name
+        self.registry = ContainerRegistry()
+        self._debug_mode = False
         self.threads = []
         self.remote_ssh_command = None
+
+    def set_debug_mode(self, enabled: bool) -> None:
+        """Set debug mode for docker commands.
+        
+        Args:
+            enabled: Whether to enable debug mode
+        """
+        self._debug_mode = enabled
+
+    def set_container_name(self, container_name: str):
+        """Set the container name."""
+        self.container_name = container_name
+
+    def execute_command(self, command: list) -> tuple:
+        """Execute a docker command.
+        
+        Args:
+            command: Command to execute as list of strings
+            
+        Returns:
+            tuple: (stdout, stderr, return_code)
+        """
+        try:
+            if self._debug_mode:
+                print(f"Executing command: {' '.join(command)}")
+                
+            result = subprocess.run(command, capture_output=True, text=True)
+            
+            if self._debug_mode and result.returncode != 0:
+                print(f"Command failed with code {result.returncode}")
+                print(f"stderr: {result.stderr}")
+                
+            return result.stdout, result.stderr, result.returncode
+        except Exception as e:
+            if self._debug_mode:
+                print(f"Command execution failed: {str(e)}")
+            return "", str(e), 1
+
+    def _ensure_image_exists(self) -> bool:
+        """Check if the Docker image exists locally and pull it if not.
+        
+        Returns:
+            bool: True if image exists or was pulled successfully, False otherwise
+        """
+        # Check if image exists
+        command = ['docker', 'images', '-q', DOCKER_IMAGE]
+        stdout, stderr, return_code = self.execute_command(command)
+        
+        if stdout.strip():  # Image exists
+            return True
+            
+        # Image doesn't exist, try to pull it
+        pull_command = ['docker', 'pull', DOCKER_IMAGE]
+        stdout, stderr, return_code = self.execute_command(pull_command)
+        
+        if return_code != 0:
+            raise Exception(f"Failed to pull Docker image: {stderr}")
+            
+        return True
+
+    def check_and_pull_image_updates(self, image_name: str = None, tag: str = None) -> tuple:
+        """Check if a Docker image has updates available and pull if it does.
+        
+        Args:
+            image_name: Docker image name (defaults to DOCKER_IMAGE)
+            tag: Docker image tag (defaults to DOCKER_TAG)
+            
+        Returns:
+            tuple: (was_updated, message)
+                was_updated: True if the image was updated, False otherwise
+                message: Informational message about what happened
+        """
+        # Use default if not specified
+        image_name = image_name or DOCKER_IMAGE
+        tag = tag or DOCKER_TAG
+        
+        full_image_name = f"{image_name}:{tag}"
+        
+        # Check if an update is available
+        check_cmd = ['docker', 'pull', '--quiet', full_image_name]
+        stdout, stderr, return_code = self.execute_command(check_cmd)
+        
+        # If we got output and command was successful, an update is available
+        if return_code == 0 and stdout.strip() and "Image is up to date" not in stderr:
+            # Pull the updated image
+            pull_cmd = ['docker', 'pull', full_image_name]
+            pull_stdout, pull_stderr, pull_return_code = self.execute_command(pull_cmd)
+            
+            if pull_return_code == 0:
+                return (True, f"Docker image {full_image_name} updated successfully")
+            else:
+                return (False, f"Failed to update Docker image: {pull_stderr}")
+        else:
+            return (False, f"No updates available for Docker image {full_image_name}")
+
+    def launch_container(self, volume_name: str = None) -> None:
+        """Launch the container with an optional volume.
+        
+        Args:
+            volume_name: Optional volume name to mount
+        """
+        # Ensure image exists
+        self._ensure_image_exists()
+        
+        # Check if a container with the same name already exists
+        inspect_command = ['docker', 'container', 'inspect', self.container_name]
+        stdout, stderr, return_code = self.execute_command(inspect_command)
+        
+        # If container exists (return code 0), remove it
+        if return_code == 0:
+            remove_command = ['docker', 'rm', '-f', self.container_name]
+            stdout, stderr, return_code = self.execute_command(remove_command)
+            if return_code != 0:
+                raise Exception(f"Failed to remove existing container: {stderr}")
+        
+        # Get the command to run
+        command = self.get_launch_command(volume_name)
+        
+        # Log the full Docker command
+        logging.info(f"Launching container with command: {' '.join(command)}")
+        
+        # Execute the command
+        stdout, stderr, return_code = self.execute_command(command)
+        if return_code != 0:
+            raise Exception(f"Failed to launch container: {stderr}")
+
+        # Register the container with its volume
+        self.registry.add_container(self.container_name, volume_name)
+        
+        # Log successful launch with volume information
+        if volume_name:
+            logging.info(f"Container {self.container_name} launched successfully with volume {volume_name}")
+        else:
+            logging.info(f"Container {self.container_name} launched successfully without a specific volume")
+
+    def get_launch_command(self, volume_name: str = None) -> list:
+        """Get the Docker command that will be used to launch the container.
+        
+        Args:
+            volume_name: Optional volume name to mount
+            
+        Returns:
+            list: The Docker command as a list of strings
+        """
+        # Base command with container name
+        command = [
+            'docker', 'run'
+        ]
+        if platform.machine() in ['aarch64', 'arm64']:
+            command += ['--platform', 'linux/amd64']
+        command += [
+            '--rm',
+            '-d',  # Run in detached mode
+            '--name', self.container_name,  # Set container name
+            # '--restart', 'unless-stopped',  # Restart policy
+        ]
+        
+        # Add volume mount if specified
+        if volume_name:
+            command.extend(['-v', f'{volume_name}:{DOCKER_VOLUME_PATH}'])
+            logging.info(f"Using volume mount: {volume_name}:{DOCKER_VOLUME_PATH}")
+        else:
+            logging.warning(f"No volume specified for container {self.container_name}")
+        
+        # Add the image name from DOCKER_IMAGE constant
+        command.append(DOCKER_IMAGE)
+        
+        return command
 
     def set_remote_connection(self, ssh_command: str):
         """Set up remote connection using SSH command."""
@@ -223,3 +510,103 @@ class DockerCommandHandler:
             callback,
             error_callback
         )
+
+    def list_containers(self, all_containers=True) -> list:
+        """List all edge node containers.
+        
+        Args:
+            all_containers: If True, show all containers including stopped ones
+            
+        Returns:
+            list: List of container dictionaries with info
+        """
+        command = [
+            'docker', 'ps',
+            '--format', '{{.Names}}\t{{.Status}}\t{{.ID}}',
+            '-f', 'name=r1node'
+        ]
+        if all_containers:
+            command.append('-a')
+            
+        stdout, stderr, return_code = self.execute_command(command)
+        if return_code != 0:
+            raise Exception(f"Failed to list containers: {stderr}")
+            
+        containers = []
+        for line in stdout.splitlines():
+            if line.strip():
+                name, status, container_id = line.split('\t')
+                containers.append({
+                    'name': name,
+                    'status': status,
+                    'id': container_id,
+                    'running': 'Up' in status
+                })
+        return containers
+
+    def stop_container(self, container_name: str = None) -> None:
+        """Stop a container.
+        
+        Args:
+            container_name: Name of container to stop. If None, uses self.container_name
+        """
+        name = container_name or self.container_name
+        command = ['docker', 'stop', name]
+        stdout, stderr, return_code = self.execute_command(command)
+        if return_code != 0:
+            raise Exception(f"Failed to stop container {name}: {stderr}")
+
+    def remove_container(self, container_name: str = None, force: bool = False) -> None:
+        """Remove a container.
+        
+        Args:
+            container_name: Name of container to remove. If None, uses self.container_name
+            force: If True, force remove even if running
+        """
+        name = container_name or self.container_name
+        command = ['docker', 'rm']
+        if force:
+            command.append('-f')
+        command.append(name)
+        
+        stdout, stderr, return_code = self.execute_command(command)
+        if return_code != 0:
+            raise Exception(f"Failed to remove container {name}: {stderr}")
+
+        # Remove from registry
+        self.registry.remove_container(name)
+
+    def inspect_container(self, container_name: str = None) -> dict:
+        """Get detailed information about a container.
+        
+        Args:
+            container_name: Name of container to inspect. If None, uses self.container_name
+            
+        Returns:
+            dict: Container information
+        """
+        name = container_name or self.container_name
+        command = ['docker', 'inspect', name]
+        stdout, stderr, return_code = self.execute_command(command)
+        if return_code != 0:
+            raise Exception(f"Failed to inspect container {name}: {stderr}")
+            
+        try:
+            return json.loads(stdout)[0]
+        except (json.JSONDecodeError, IndexError) as e:
+            raise Exception(f"Failed to parse container info: {str(e)}")
+
+    def is_container_running(self, container_name: str = None) -> bool:
+        """Check if a container is running.
+        
+        Args:
+            container_name: Name of container to check. If None, uses self.container_name
+            
+        Returns:
+            bool: True if container is running
+        """
+        try:
+            info = self.inspect_container(container_name)
+            return info.get('State', {}).get('Running', False)
+        except Exception:
+            return False
