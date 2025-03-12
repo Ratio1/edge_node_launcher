@@ -212,7 +212,9 @@ jobs:
 
       - name: Replace non-signed version with signed one
         if: runner.os == 'Windows'
-        run: mv signed/EdgeNodeLauncher.msi dist/EdgeNodeLauncher.msi
+        run: |
+          rm dist/EdgeNodeLauncher.msi
+          mv signed/EdgeNodeLauncher.msi dist/EdgeNodeLauncher.msi
 
       - name: Windows-specific debug logging 2
         if: runner.os == 'Windows'
