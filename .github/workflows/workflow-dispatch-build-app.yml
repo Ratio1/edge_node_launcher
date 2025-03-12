@@ -172,7 +172,20 @@ jobs:
 
       - name: Create msi
         if: runner.os == 'Windows'
-        run: ./build_scripts/win32_build.bat
+        run: ./build_scripts/build_msi.bat
+
+      - name: Windows-specific debug logging 2
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          echo "Windows-specific directory listing:"
+          echo "Workspace directory (CMD):"
+          dir ${{ github.workspace }}
+          dir ${{ github.workspace }}\..
+          echo "Dist directory (CMD):"
+          dir ${{ github.workspace }}\dist
+          echo "Checking specific EXE exists:"
+          if exist "${{ github.workspace }}\dist\EdgeNodeLauncher.exe" (echo "EdgeNodeLauncher.exe exists") else (echo "EdgeNodeLauncher.exe NOT found")
 
       - name: Sign the msi installer
         if: runner.os == 'Windows'
