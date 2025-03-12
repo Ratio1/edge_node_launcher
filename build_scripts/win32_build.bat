@@ -30,55 +30,7 @@ if errorlevel 1 (
     echo Failed to build EXE package.
     exit /b 1
 )
-echo EXE package built successfully.
-
-REM Sign the EXE
-echo Signing the EXE...
-set CERT_NAME=
-set TIMESTAMP_SERVER=http://timestamp.digicert.com
-
-REM Check for certificate details
-if "%CERT_NAME%"=="" (
-    echo No certificate name specified. Please set CERT_NAME environment variable or edit this script.
-    set /p CERT_NAME="Enter certificate name from store (leave empty to skip signing): "
-)
-
-if not "%CERT_NAME%"=="" (
-    echo Signing with certificate: %CERT_NAME%
-    
-    REM Check if signtool is available in PATH
-    where signtool >nul 2>&1
-    if errorlevel 1 (
-        echo Warning: signtool.exe not found in PATH. Attempting to locate it...
-        
-        REM Try to find signtool in Windows SDK
-        for /f %%i in ('dir /b /s "C:\Program Files*\Windows Kits\*\bin\*\x64\signtool.exe" 2^>nul') do set SIGNTOOL=%%i
-        
-        if not defined SIGNTOOL (
-            echo Error: signtool.exe not found. Please install Windows SDK or add signtool to PATH.
-            echo Skipping signing process.
-            goto :skip_signing
-        )
-    ) else (
-        set SIGNTOOL=signtool
-    )
-    
-    echo Using signtool: %SIGNTOOL%
-    
-    %SIGNTOOL% sign /n "%CERT_NAME%" /fd SHA256 /tr "%TIMESTAMP_SERVER%" /td SHA256 /v "%OUTPUT_DIR%\%APP_NAME%.exe"
-    if errorlevel 1 (
-        echo Warning: Failed to sign the EXE.
-    ) else (
-        echo EXE signed successfully.
-    )
-)
-
-:skip_signing
-
-echo.
-echo Build summary:
-echo - EXE package: %OUTPUT_DIR%\%APP_NAME%.exe
-echo.
+echo EXE package built successfully: %OUTPUT_DIR%\%APP_NAME%.exe
 
 REM Run post-build tasks
 echo Running post-build tasks...
