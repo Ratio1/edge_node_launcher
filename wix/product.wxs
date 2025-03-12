@@ -1,59 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?> 
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"> 
-    <Product Id="*" Name="EdgeNodeLauncher" Language="1033" Version="1.0.0.0" Manufacturer="Your Company" UpgradeCode="61DAB716-7CE9-4F67-BC46-7ADB96FB074A"> 
-        <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" /> 
-        <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." /> 
-        <MediaTemplate EmbedCab="yes" /> 
-        <Feature Id="ProductFeature" Title="EdgeNodeLauncher" Level="1"> 
-            <ComponentGroupRef Id="ProductComponents" /> 
-        </Feature> 
-        <Icon Id="AppIcon.ico" SourceFile="assets\r1_icon.ico"/> 
-        <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" /> 
-        <Property Id="ARPHELPLINK" Value="https://your-company-website.com" /> 
-        <Property Id="ARPURLINFOABOUT" Value="https://your-company-website.com/about" /> 
-        <UIRef Id="WixUI_Minimal" /> 
-        <WixVariable Id="WixUIDialogBmp" Value="assets\r1_icon.png" /> 
-        <WixVariable Id="WixUIBannerBmp" Value="assets\r1_icon.png" /> 
-        <Directory Id="TARGETDIR" Name="SourceDir"> 
-            <Directory Id="ProgramFilesFolder"> 
-                <Directory Id="INSTALLFOLDER" Name="EdgeNodeLauncher"> 
-                    <Component Id="ApplicationComponent" Guid="*"> 
-                        <File Id="IconResource" Source="assets\r1_icon.ico" /> 
-                        <File Id="ApplicationExecutable" Source="dist\EdgeNodeLauncher.exe" KeyPath="yes"> 
-                            <Shortcut Id="ApplicationStartMenuShortcut" Directory="ProgramMenuDir" Name="EdgeNodeLauncher" WorkingDirectory="INSTALLFOLDER" Advertise="yes" Icon="AppIcon.ico" /> 
-                            <Shortcut Id="ApplicationDesktopShortcut" Directory="DesktopFolder" Name="EdgeNodeLauncher" WorkingDirectory="INSTALLFOLDER" Advertise="yes" Icon="AppIcon.ico" /> 
-                        </File> 
-                        <ProgId Id="EdgeNodeLauncher.Document" Description="EdgeNodeLauncher Application" Icon="AppIcon.ico"> 
-                            <Extension Id="exe" ContentType="application/exe"> 
-                                <Verb Id="open" Command="Open" TargetFile="ApplicationExecutable" Argument="%1" /> 
-                            </Extension> 
-                        </ProgId> 
-                        <RegistryValue Root="HKLM" Key="SOFTWARE\Classes\Applications\EdgeNodeLauncher.exe\DefaultIcon" Type="string" Value="[INSTALLFOLDER]EdgeNodeLauncher.exe,0" /> 
-                        <RegistryValue Root="HKLM" Key="SOFTWARE\Classes\Applications\EdgeNodeLauncher.exe\shell\open\command" Type="string" Value="&quot;[INSTALLFOLDER]EdgeNodeLauncher.exe&quot; &quot;%1&quot;" /> 
-                        <RegistryValue Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\EdgeNodeLauncher.exe" Type="string" Value="[INSTALLFOLDER]EdgeNodeLauncher.exe" /> 
-                        <RegistryValue Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\EdgeNodeLauncher.exe" Name="Path" Type="string" Value="[INSTALLFOLDER]" /> 
-                        <RegistryValue Root="HKCU" Key="Software\Classes\EdgeNodeLauncherFile" Name="FriendlyTypeName" Type="string" Value="EdgeNodeLauncher File" /> 
-                        <RegistryValue Root="HKCU" Key="Software\Classes\EdgeNodeLauncherFile\DefaultIcon" Type="string" Value="[INSTALLFOLDER]EdgeNodeLauncher.exe,0" /> 
-                        <RegistryValue Root="HKLM" Key="SOFTWARE\Classes\EdgeNodeLauncher.exe" Name="FriendlyAppName" Type="string" Value="EdgeNodeLauncher" /> 
-                        <RegistryValue Root="HKLM" Key="SOFTWARE\Classes\EdgeNodeLauncher.exe\DefaultIcon" Type="string" Value="[INSTALLFOLDER]EdgeNodeLauncher.exe,0" /> 
-                        <RegistryValue Root="HKCU" Key="Software\Classes\Applications\EdgeNodeLauncher.exe\DefaultIcon" Type="string" Value="[INSTALLFOLDER]EdgeNodeLauncher.exe,0" /> 
-                        <RegistryValue Root="HKCU" Key="Software\Classes\Applications\EdgeNodeLauncher.exe\Taskbar\DefaultIcon" Type="string" Value="[INSTALLFOLDER]EdgeNodeLauncher.exe,0" /> 
-                    </Component> 
-                </Directory> 
-            </Directory> 
-            <Directory Id="ProgramMenuFolder"> 
-                <Directory Id="ProgramMenuDir" Name="EdgeNodeLauncher"> 
-                    <Component Id="ProgramMenuDir" Guid="*"> 
-                        <RemoveFolder Id="ProgramMenuDir" On="uninstall" /> 
-                        <RegistryValue Root="HKCU" Key="Software\[Manufacturer]\[ProductName]" Type="string" Value="" KeyPath="yes" /> 
-                    </Component> 
-                </Directory> 
-            </Directory> 
-            <Directory Id="DesktopFolder" Name="Desktop" /> 
+  <Product Id="*" Name="EdgeNodeLauncher" Language="1033" Version="1.0.0.0" Manufacturer="YourCompany" UpgradeCode="61DAB716-7CE9-4F67-BC46-7ADB96FB074A"> 
+    <Package InstallerVersion="200" Compressed="yes" /> 
+    <MediaTemplate EmbedCab="yes" /> 
+    <Feature Id="ProductFeature" Title="EdgeNodeLauncher" Level="1"> 
+      <ComponentRef Id="ApplicationComponent" /> 
+    </Feature> 
+    <Directory Id="TARGETDIR" Name="SourceDir"> 
+      <Directory Id="ProgramFilesFolder"> 
+        <Directory Id="INSTALLDIR" Name="EdgeNodeLauncher"> 
+          <Component Id="ApplicationComponent" Guid="*"> 
+            <File Id="ApplicationExe" Source="dist\EdgeNodeLauncher.exe" KeyPath="yes" /> 
+          </Component> 
         </Directory> 
-        <ComponentGroup Id="ProductComponents"> 
-            <ComponentRef Id="ApplicationComponent" /> 
-            <ComponentRef Id="ProgramMenuDir" /> 
-        </ComponentGroup> 
-    </Product> 
+      </Directory> 
+    </Directory> 
+  </Product> 
 </Wix> 
