@@ -27,20 +27,29 @@ class DockerCheckDialog(QDialog):
         # Button layout
         button_layout = QHBoxLayout()
         
-        # Download Docker button
+        # Download Docker button - apply toggle_button_start styles
         self.download_button = QPushButton('Download Docker')
         self.download_button.clicked.connect(self.open_docker_download)
+        self.download_button.setProperty("type", "toggle_button_start")
         button_layout.addWidget(self.download_button)
         
-        # Try Again button
+        # Try Again button - apply toggle_button_start styles
         self.retry_button = QPushButton('Try Again')
-        self.retry_button.setProperty("type", "confirm")  # Set property for styling
+        self.retry_button.setProperty("type", "toggle_button_start")
         self.retry_button.clicked.connect(self.accept)
         button_layout.addWidget(self.retry_button)
         
-        # Quit button
+        # Quit button - explicitly using toggle_button_stop styles
         self.quit_button = QPushButton('Quit')
-        self.quit_button.setProperty("type", "cancel")  # Set property for styling
+        # Set the property to use toggle_button_stop styles (#FADC33 bg, #C4AC26 text, #FFE138 hover)
+        self.quit_button.setProperty("type", "toggle_button_stop")
+        # Set additional explicit styling to ensure toggle_button_stop styles are applied
+        self.quit_button.setStyleSheet("""
+            /* Ensuring toggle_button_stop style is applied to quit button */
+            background-color: #FADC33;
+            color: #C4AC26;
+            border: 1px solid transparent;
+        """)
         self.quit_button.clicked.connect(self.reject)
         button_layout.addWidget(self.quit_button)
         
@@ -50,6 +59,34 @@ class DockerCheckDialog(QDialog):
         # Apply theme from parent if available
         if parent and hasattr(parent, '_current_stylesheet'):
             self.setStyleSheet(parent._current_stylesheet)
+        else:
+            # Apply default button styles if no parent stylesheet is available
+            self.setStyleSheet("""
+                QPushButton[type="toggle_button_start"] {
+                    background-color: #1B47F7;
+                    color: white;
+                    border: 1px solid transparent;
+                    border-radius: 15px;
+                    padding: 10px 20px;
+                    font-size: 16px;
+                    min-height: 40px;
+                }
+                QPushButton[type="toggle_button_start"]:hover {
+                    background-color: #4458FF;
+                }
+                QPushButton[type="toggle_button_stop"] {
+                    background-color: #FADC33;
+                    color: #C4AC26;
+                    border: 1px solid transparent;
+                    border-radius: 15px;
+                    padding: 10px 20px;
+                    font-size: 16px;
+                    min-height: 40px;
+                }
+                QPushButton[type="toggle_button_stop"]:hover {
+                    background-color: #FFE138;
+                }
+            """)
         
         # Center the dialog on the screen
         screen_geometry = QApplication.desktop().screenGeometry()
