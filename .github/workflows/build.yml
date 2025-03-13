@@ -54,7 +54,6 @@ jobs:
         include:
           - os: windows-latest
             build: ./build_scripts/win32_build.bat
-            zip: Compress-Archive -Path (Get-ChildItem -Path dist) -DestinationPath EdgeNodeLauncher-WIN32.zip
             name: EdgeNodeLauncher-WIN32
             platformDependencies: ""
 
@@ -62,7 +61,6 @@ jobs:
             build: |
               chmod +x build_scripts/unix_build.sh
               ./build_scripts/unix_build.sh
-            zip: cd dist && zip -r ../EdgeNodeLauncher-LINUX_Ubuntu-24.04.zip *
             name: EdgeNodeLauncher-LINUX_Ubuntu-24.04
             platformDependencies: sudo apt-get update && sudo apt install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
 
@@ -70,7 +68,6 @@ jobs:
             build: |
               chmod +x build_scripts/unix_build.sh
               ./build_scripts/unix_build.sh
-            zip: cd dist && zip -r ../EdgeNodeLauncher-LINUX_Ubuntu-22.04.zip *
             name: EdgeNodeLauncher-LINUX_Ubuntu-22.04
             platformDependencies: sudo apt-get update && sudo apt install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
 
@@ -78,7 +75,6 @@ jobs:
             build: |
               chmod +x build_scripts/unix_build.sh
               ./build_scripts/unix_build.sh
-            zip: cd dist && zip -r ../EdgeNodeLauncher-LINUX_Ubuntu-20.04.zip *
             name: EdgeNodeLauncher-LINUX_Ubuntu-20.04
             platformDependencies: sudo apt-get update && sudo apt-get install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
 
@@ -86,7 +82,6 @@ jobs:
             build: |
               chmod +x build_scripts/unix_build.sh
               ./build_scripts/unix_build.sh
-            zip: cd dist && zip -r ../EdgeNodeLauncher-OSX-arm64.zip *
             name: EdgeNodeLauncher-OSX-arm64
 
     name: Build installers ${{ matrix.os }}
@@ -95,6 +90,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.inputs.branch || 'main' }}  # Use input branch or default to main
       - name: Set up Python 3.10.11
         uses: actions/setup-python@v2
         with:
@@ -176,23 +173,22 @@ jobs:
           rm dist/EdgeNodeLauncher.msi
           mv signed/EdgeNodeLauncher.msi dist/EdgeNodeLauncher.msi
 
-      - name: Zip App
-        run: ${{ matrix.zip }}
-      - name: Save zip File as artifact
+      # Debug directory listings to verify what's in the directories
+      - name: Debug directory listing
+        run: |
+          echo "Contents of dist directory:"
+          ls -la dist/
+
+      # Upload Windows executable
+      - name: Upload Windows EXE as artifact
+        if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: release-${{ matrix.name }}-v${{ env.VERSION }}
-          path: ./${{ matrix.name }}.zip
+          name: EdgeNodeLauncher-EXE-v${{ env.VERSION }}
+          path: dist/EdgeNodeLauncher.exe
           overwrite: true
 
-      - name: Save zip File as artifact on EdgeNodeLauncherRelease
-        uses: svenstaro/upload-release-action@master
-        with:
-          file: ./${{ matrix.name }}.zip
-          asset_name: ${{ matrix.name }}-v${{ env.VERSION }}.zip
-          repo_name: ${{ github.repository }}
-          overwrite: true
-
+      # Upload Windows MSI
       - name: Upload MSI as artifact
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
@@ -201,12 +197,61 @@ jobs:
           path: dist/EdgeNodeLauncher.msi
           overwrite: true
 
+      # Upload Linux binary
+      - name: Upload Linux binary as artifact
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: EdgeNodeLauncher-${{ matrix.name }}-v${{ env.VERSION }}
+          path: dist/EdgeNodeLauncher
+          overwrite: true
+
+      # Upload macOS app
+      - name: Upload macOS app as artifact
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: EdgeNodeLauncher-${{ matrix.name }}-v${{ env.VERSION }}
+          path: dist/EdgeNodeLauncher.app
+          overwrite: true
+
+      # Upload Windows EXE to release
+      - name: Upload Windows EXE to release
+        if: runner.os == 'Windows'
+        uses: svenstaro/upload-release-action@master
+        with:
+          file: dist/EdgeNodeLauncher.exe
+          asset_name: EdgeNodeLauncher-Windows-v${{ env.VERSION }}.exe
+          repo_name: ${{ github.repository }}
+          overwrite: true
+
+      # Upload Windows MSI to release
       - name: Upload MSI to release
         if: runner.os == 'Windows'
         uses: svenstaro/upload-release-action@master
         with:
           file: dist/EdgeNodeLauncher.msi
-          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}.msi
+          asset_name: EdgeNodeLauncher-Windows-v${{ env.VERSION }}.msi
+          repo_name: ${{ github.repository }}
+          overwrite: true
+
+      # Upload Linux binary to release
+      - name: Upload Linux binary to release
+        if: runner.os == 'Linux'
+        uses: svenstaro/upload-release-action@master
+        with:
+          file: dist/EdgeNodeLauncher
+          asset_name: EdgeNodeLauncher-${{ matrix.name }}-v${{ env.VERSION }}
+          repo_name: ${{ github.repository }}
+          overwrite: true
+
+      # Upload macOS app to release
+      - name: Upload macOS app to release
+        if: runner.os == 'macOS'
+        uses: svenstaro/upload-release-action@master
+        with:
+          file: dist/EdgeNodeLauncher.app
+          asset_name: EdgeNodeLauncher-macOS-v${{ env.VERSION }}.app
           repo_name: ${{ github.repository }}
           overwrite: true
 
@@ -217,27 +262,21 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.inputs.branch || 'main' }}  # Use input branch or default to main
       - name: Retrieve version
         id: retrieve_version
         run: |
           echo "VERSION=$(cat ver.py | grep -o "'.*'")" >> $GITHUB_OUTPUT
 
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: release-*-v*
-          path: release
-          merge-multiple: true
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: EdgeNodeLauncher-MSI-v${{ steps.retrieve_version.outputs.VERSION }}
-          path: release
-
-      - run: ls release
+      # For potential debugging
+      - name: List available artifacts
+        run: |
+          echo "This step only lists artifacts that were made available to download"
+          echo "VERSION: ${{ steps.retrieve_version.outputs.VERSION }}"
 
       - uses: ncipollo/release-action@v1
         with:
-          artifacts: release/*.zip,release/*.msi
           name: Version ${{ steps.retrieve_version.outputs.version }}
           allowUpdates: true
           tag: ${{ steps.retrieve_version.outputs.version }}
