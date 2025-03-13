@@ -17,7 +17,12 @@ REM Create temporary WiX files directory
 if not exist wix mkdir wix
 
 REM Copy EULA.rtf to the wix directory
-copy build_scripts\EULA.rtf wix\EULA.rtf
+echo Copying EULA file...
+copy /Y "build_scripts\EULA.rtf" "wix\EULA.rtf"
+if errorlevel 1 (
+    echo Failed to copy EULA file.
+    exit /b 1
+)
 
 REM Create a dead-simple WiX file with minimal features
 echo ^<?xml version="1.0" encoding="UTF-8"?^> > wix\product.wxs
@@ -31,12 +36,16 @@ echo     ^<WixVariable Id="WixUILicenseRtf" Value="wix\EULA.rtf" /^> >> wix\prod
 echo     ^<Feature Id="ProductFeature" Title="EdgeNodeLauncher" Level="1"^> >> wix\product.wxs
 echo       ^<ComponentRef Id="ApplicationComponent" /^> >> wix\product.wxs
 echo       ^<ComponentRef Id="DesktopShortcutComponent" /^> >> wix\product.wxs
+echo       ^<ComponentRef Id="EULAComponent" /^> >> wix\product.wxs
 echo     ^</Feature^> >> wix\product.wxs
 echo     ^<Directory Id="TARGETDIR" Name="SourceDir"^> >> wix\product.wxs
 echo       ^<Directory Id="ProgramFilesFolder"^> >> wix\product.wxs
 echo         ^<Directory Id="INSTALLDIR" Name="EdgeNodeLauncher"^> >> wix\product.wxs
 echo           ^<Component Id="ApplicationComponent" Guid="*"^> >> wix\product.wxs
 echo             ^<File Id="ApplicationExe" Source="%OUTPUT_DIR%\%APP_NAME%.exe" KeyPath="yes" /^> >> wix\product.wxs
+echo           ^</Component^> >> wix\product.wxs
+echo           ^<Component Id="EULAComponent" Guid="*"^> >> wix\product.wxs
+echo             ^<File Id="EULAFile" Source="wix\EULA.rtf" KeyPath="yes" /^> >> wix\product.wxs
 echo           ^</Component^> >> wix\product.wxs
 echo         ^</Directory^> >> wix\product.wxs
 echo       ^</Directory^> >> wix\product.wxs
@@ -57,6 +66,10 @@ echo     ^<Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" /^> >> wix\product.
 echo     ^<UIRef Id="WixUI_InstallDir" /^> >> wix\product.wxs
 echo   ^</Product^> >> wix\product.wxs
 echo ^</Wix^> >> wix\product.wxs
+
+REM Show the contents of the WiX directory to verify EULA is there
+echo Files in WiX directory:
+dir wix
 
 REM Compile WiX source
 echo Compiling WiX source...
