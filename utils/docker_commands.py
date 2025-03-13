@@ -232,206 +232,102 @@ class DockerCommandHandler:
                 print(f"Command execution failed: {str(e)}")
             return "", str(e), 1
 
-    def _ensure_image_exists(self, callback=None, error_callback=None) -> None:
+    def _ensure_image_exists(self) -> bool:
         """Check if the Docker image exists locally and pull it if not.
         
-        Args:
-            callback: Function to call on success
-            error_callback: Function to call on error
+        Returns:
+            bool: True if image exists or was pulled successfully, False otherwise
         """
-        # If callbacks are provided, run in a thread
-        if callback or error_callback:
-            thread = QThread()
-            
-            def run_ensure_image():
-                try:
-                    # Check if image exists
-                    command = ['docker', 'images', '-q', DOCKER_IMAGE]
-                    stdout, stderr, return_code = self.execute_command(command)
-                    
-                    if not stdout.strip():  # Image doesn't exist
-                        # Image doesn't exist, try to pull it
-                        pull_command = ['docker', 'pull', DOCKER_IMAGE]
-                        stdout, stderr, return_code = self.execute_command(pull_command)
-                        
-                        if return_code != 0:
-                            raise Exception(f"Failed to pull Docker image: {stderr}")
-                    
-                    # Call success callback if provided
-                    if callback:
-                        self._invoke_callback(callback)
-                except Exception as e:
-                    logging.error(f"Error ensuring image exists: {str(e)}")
-                    if error_callback:
-                        self._invoke_callback(error_callback, str(e))
-            
-            # Connect thread
-            thread.run = run_ensure_image
-            thread.finished.connect(lambda: self.threads.remove(thread) if thread in self.threads else None)
-            self.threads.append(thread)
-            thread.start()
-            return None
-        else:
-            # Run synchronously
-            # Check if image exists
-            command = ['docker', 'images', '-q', DOCKER_IMAGE]
-            stdout, stderr, return_code = self.execute_command(command)
-            
-            if stdout.strip():  # Image exists
-                return True
-                
-            # Image doesn't exist, try to pull it
-            pull_command = ['docker', 'pull', DOCKER_IMAGE]
-            stdout, stderr, return_code = self.execute_command(pull_command)
-            
-            if return_code != 0:
-                raise Exception(f"Failed to pull Docker image: {stderr}")
-                
+        # Check if image exists
+        command = ['docker', 'images', '-q', DOCKER_IMAGE]
+        stdout, stderr, return_code = self.execute_command(command)
+        
+        if stdout.strip():  # Image exists
             return True
+            
+        # Image doesn't exist, try to pull it
+        pull_command = ['docker', 'pull', DOCKER_IMAGE]
+        stdout, stderr, return_code = self.execute_command(pull_command)
+        
+        if return_code != 0:
+            raise Exception(f"Failed to pull Docker image: {stderr}")
+            
+        return True
 
-    def check_and_pull_image_updates(self, image_name: str = None, tag: str = None, callback=None, error_callback=None) -> None:
+    def check_and_pull_image_updates(self, image_name: str = None, tag: str = None) -> tuple:
         """Check if a Docker image has updates available and pull if it does.
         
         Args:
             image_name: Docker image name (defaults to DOCKER_IMAGE)
             tag: Docker image tag (defaults to DOCKER_TAG)
-            callback: Function to call with results (was_updated, message)
-            error_callback: Function to call on error
+            
+        Returns:
+            tuple: (was_updated, message)
+                was_updated: True if the image was updated, False otherwise
+                message: Informational message about what happened
         """
-        # If callbacks provided, run asynchronously
-        if callback:
-            thread = QThread()
+        # Use default if not specified
+        image_name = image_name or DOCKER_IMAGE
+        tag = tag or DOCKER_TAG
+        
+        full_image_name = f"{image_name}:{tag}"
+        
+        # Check if an update is available
+        check_cmd = ['docker', 'pull', '--quiet', full_image_name]
+        stdout, stderr, return_code = self.execute_command(check_cmd)
+        
+        # If we got output and command was successful, an update is available
+        if return_code == 0 and stdout.strip() and "Image is up to date" not in stderr:
+            # Pull the updated image
+            pull_cmd = ['docker', 'pull', full_image_name]
+            pull_stdout, pull_stderr, pull_return_code = self.execute_command(pull_cmd)
             
-            def run_check_update():
-                try:
-                    # Use default if not specified
-                    img_name = image_name or DOCKER_IMAGE
-                    img_tag = tag or DOCKER_TAG
-                    
-                    full_image_name = f"{img_name}:{img_tag}"
-                    
-                    # Check if an update is available
-                    check_cmd = ['docker', 'pull', '--quiet', full_image_name]
-                    stdout, stderr, return_code = self.execute_command(check_cmd)
-                    
-                    # If we got output and command was successful, an update is available
-                    if return_code == 0 and stdout.strip() and "Image is up to date" not in stderr:
-                        # Pull the updated image
-                        pull_cmd = ['docker', 'pull', full_image_name]
-                        pull_stdout, pull_stderr, pull_return_code = self.execute_command(pull_cmd)
-                        
-                        if pull_return_code == 0:
-                            result = (True, f"Docker image {full_image_name} updated successfully")
-                        else:
-                            result = (False, f"Failed to update Docker image: {pull_stderr}")
-                    else:
-                        result = (False, f"No updates available for Docker image {full_image_name}")
-                    
-                    # Call success callback with results
-                    self._invoke_callback(callback, result)
-                except Exception as e:
-                    logging.error(f"Error checking for image updates: {str(e)}")
-                    if error_callback:
-                        self._invoke_callback(error_callback, str(e))
-            
-            # Connect thread
-            thread.run = run_check_update
-            thread.finished.connect(lambda: self.threads.remove(thread) if thread in self.threads else None)
-            self.threads.append(thread)
-            thread.start()
-        else:
-            # Use default if not specified
-            img_name = image_name or DOCKER_IMAGE
-            img_tag = tag or DOCKER_TAG
-            
-            full_image_name = f"{img_name}:{img_tag}"
-            
-            # Check if an update is available
-            check_cmd = ['docker', 'pull', '--quiet', full_image_name]
-            stdout, stderr, return_code = self.execute_command(check_cmd)
-            
-            # If we got output and command was successful, an update is available
-            if return_code == 0 and stdout.strip() and "Image is up to date" not in stderr:
-                # Pull the updated image
-                pull_cmd = ['docker', 'pull', full_image_name]
-                pull_stdout, pull_stderr, pull_return_code = self.execute_command(pull_cmd)
-                
-                if pull_return_code == 0:
-                    return (True, f"Docker image {full_image_name} updated successfully")
-                else:
-                    return (False, f"Failed to update Docker image: {pull_stderr}")
+            if pull_return_code == 0:
+                return (True, f"Docker image {full_image_name} updated successfully")
             else:
-                return (False, f"No updates available for Docker image {full_image_name}")
+                return (False, f"Failed to update Docker image: {pull_stderr}")
+        else:
+            return (False, f"No updates available for Docker image {full_image_name}")
 
-    def launch_container(self, volume_name: str = None, callback=None, error_callback=None) -> None:
+    def launch_container(self, volume_name: str = None) -> None:
         """Launch the container with an optional volume.
         
         Args:
             volume_name: Optional volume name to mount
-            callback: Function to call on success
-            error_callback: Function to call on error
         """
-        # Create a thread to run this operation
-        thread = QThread()
+        # Ensure image exists
+        self._ensure_image_exists()
         
-        def run_launch():
-            try:
-                # We'll handle the image check within this thread
-                # Check if a container with the same name already exists
-                inspect_command = ['docker', 'container', 'inspect', self.container_name]
-                stdout, stderr, return_code = self.execute_command(inspect_command)
-                
-                # If container exists (return code 0), remove it
-                if return_code == 0:
-                    remove_command = ['docker', 'rm', '-f', self.container_name]
-                    stdout, stderr, return_code = self.execute_command(remove_command)
-                    if return_code != 0:
-                        raise Exception(f"Failed to remove existing container: {stderr}")
-                
-                # Check if image exists and pull if needed
-                command = ['docker', 'images', '-q', DOCKER_IMAGE]
-                stdout, stderr, return_code = self.execute_command(command)
-                
-                if not stdout.strip():  # Image doesn't exist
-                    # Image doesn't exist, try to pull it
-                    pull_command = ['docker', 'pull', DOCKER_IMAGE]
-                    stdout, stderr, return_code = self.execute_command(pull_command)
-                    
-                    if return_code != 0:
-                        raise Exception(f"Failed to pull Docker image: {stderr}")
-                
-                # Get the command to run
-                command = self.get_launch_command(volume_name)
-                
-                # Log the full Docker command
-                logging.info(f"Launching container with command: {' '.join(command)}")
-                
-                # Execute the command
-                stdout, stderr, return_code = self.execute_command(command)
-                if return_code != 0:
-                    raise Exception(f"Failed to launch container: {stderr}")
+        # Check if a container with the same name already exists
+        inspect_command = ['docker', 'container', 'inspect', self.container_name]
+        stdout, stderr, return_code = self.execute_command(inspect_command)
+        
+        # If container exists (return code 0), remove it
+        if return_code == 0:
+            remove_command = ['docker', 'rm', '-f', self.container_name]
+            stdout, stderr, return_code = self.execute_command(remove_command)
+            if return_code != 0:
+                raise Exception(f"Failed to remove existing container: {stderr}")
+        
+        # Get the command to run
+        command = self.get_launch_command(volume_name)
+        
+        # Log the full Docker command
+        logging.info(f"Launching container with command: {' '.join(command)}")
+        
+        # Execute the command
+        stdout, stderr, return_code = self.execute_command(command)
+        if return_code != 0:
+            raise Exception(f"Failed to launch container: {stderr}")
 
-                # Register the container with its volume
-                self.registry.add_container(self.container_name, volume_name)
-                
-                # Log successful launch with volume information
-                if volume_name:
-                    logging.info(f"Container {self.container_name} launched successfully with volume {volume_name}")
-                else:
-                    logging.info(f"Container {self.container_name} launched successfully without a specific volume")
-                
-                # Call success callback if provided
-                self._invoke_callback(callback)
-            except Exception as e:
-                logging.error(f"Error launching container: {str(e)}")
-                if error_callback:
-                    self._invoke_callback(error_callback, str(e))
+        # Register the container with its volume
+        self.registry.add_container(self.container_name, volume_name)
         
-        # Connect thread
-        thread.run = run_launch
-        thread.finished.connect(lambda: self.threads.remove(thread) if thread in self.threads else None)
-        self.threads.append(thread)
-        thread.start()
+        # Log successful launch with volume information
+        if volume_name:
+            logging.info(f"Container {self.container_name} launched successfully with volume {volume_name}")
+        else:
+            logging.info(f"Container {self.container_name} launched successfully without a specific volume")
 
     def get_launch_command(self, volume_name: str = None) -> list:
         """Get the Docker command that will be used to launch the container.
@@ -614,325 +510,102 @@ class DockerCommandHandler:
             error_callback
         )
 
-    def stop_container(self, container_name: str = None, callback=None, error_callback=None) -> None:
+    def list_containers(self, all_containers=True) -> list:
+        """List all edge node containers.
+        
+        Args:
+            all_containers: If True, show all containers including stopped ones
+            
+        Returns:
+            list: List of container dictionaries with info
+        """
+        command = [
+            'docker', 'ps',
+            '--format', '{{.Names}}\t{{.Status}}\t{{.ID}}',
+            '-f', 'name=r1node'
+        ]
+        if all_containers:
+            command.append('-a')
+            
+        stdout, stderr, return_code = self.execute_command(command)
+        if return_code != 0:
+            raise Exception(f"Failed to list containers: {stderr}")
+            
+        containers = []
+        for line in stdout.splitlines():
+            if line.strip():
+                name, status, container_id = line.split('\t')
+                containers.append({
+                    'name': name,
+                    'status': status,
+                    'id': container_id,
+                    'running': 'Up' in status
+                })
+        return containers
+
+    def stop_container(self, container_name: str = None) -> None:
         """Stop a container.
         
         Args:
             container_name: Name of container to stop. If None, uses self.container_name
-            callback: Function to call on success
-            error_callback: Function to call on error
         """
         name = container_name or self.container_name
-        
-        # Create a thread to run this operation
-        thread = QThread()
-        
-        def run_stop():
-            try:
-                command = ['docker', 'stop', name]
-                stdout, stderr, return_code = self.execute_command(command)
-                if return_code != 0:
-                    raise Exception(f"Failed to stop container {name}: {stderr}")
-                
-                # Call success callback if provided
-                self._invoke_callback(callback)
-            except Exception as e:
-                logging.error(f"Error stopping container: {str(e)}")
-                if error_callback:
-                    self._invoke_callback(error_callback, str(e))
-        
-        # Connect thread
-        thread.run = run_stop
-        thread.finished.connect(lambda: self.threads.remove(thread) if thread in self.threads else None)
-        self.threads.append(thread)
-        thread.start()
+        command = ['docker', 'stop', name]
+        stdout, stderr, return_code = self.execute_command(command)
+        if return_code != 0:
+            raise Exception(f"Failed to stop container {name}: {stderr}")
 
-    def remove_container(self, container_name: str = None, force: bool = False, callback=None, error_callback=None) -> None:
+    def remove_container(self, container_name: str = None, force: bool = False) -> None:
         """Remove a container.
         
         Args:
             container_name: Name of container to remove. If None, uses self.container_name
             force: If True, force remove even if running
-            callback: Function to call on success
-            error_callback: Function to call on error
         """
         name = container_name or self.container_name
+        command = ['docker', 'rm']
+        if force:
+            command.append('-f')
+        command.append(name)
         
-        # Create a thread to run this operation
-        thread = QThread()
-        
-        def run_remove():
-            try:
-                command = ['docker', 'rm']
-                if force:
-                    command.append('-f')
-                command.append(name)
-                
-                stdout, stderr, return_code = self.execute_command(command)
-                if return_code != 0:
-                    raise Exception(f"Failed to remove container {name}: {stderr}")
+        stdout, stderr, return_code = self.execute_command(command)
+        if return_code != 0:
+            raise Exception(f"Failed to remove container {name}: {stderr}")
 
-                # Remove from registry
-                self.registry.remove_container(name)
-                
-                # Call success callback if provided
-                self._invoke_callback(callback)
-            except Exception as e:
-                logging.error(f"Error removing container: {str(e)}")
-                if error_callback:
-                    self._invoke_callback(error_callback, str(e))
-        
-        # Connect thread
-        thread.run = run_remove
-        thread.finished.connect(lambda: self.threads.remove(thread) if thread in self.threads else None)
-        self.threads.append(thread)
-        thread.start()
+        # Remove from registry
+        self.registry.remove_container(name)
 
-    def inspect_container(self, container_name: str = None, callback=None, error_callback=None) -> None:
+    def inspect_container(self, container_name: str = None) -> dict:
         """Get detailed information about a container.
         
         Args:
             container_name: Name of container to inspect. If None, uses self.container_name
-            callback: Function to call with container info
-            error_callback: Function to call on error
             
         Returns:
-            dict: Container information (only if no callbacks provided)
+            dict: Container information
         """
         name = container_name or self.container_name
-        
-        # If callbacks provided, run asynchronously
-        if callback:
-            thread = QThread()
+        command = ['docker', 'inspect', name]
+        stdout, stderr, return_code = self.execute_command(command)
+        if return_code != 0:
+            raise Exception(f"Failed to inspect container {name}: {stderr}")
             
-            def run_inspect():
-                try:
-                    command = ['docker', 'inspect', name]
-                    stdout, stderr, return_code = self.execute_command(command)
-                    
-                    if return_code != 0:
-                        raise Exception(f"Failed to inspect container {name}: {stderr}")
-                        
-                    try:
-                        container_info = json.loads(stdout)[0]
-                        
-                        # Call success callback with container info
-                        self._invoke_callback(callback, container_info)
-                    except (json.JSONDecodeError, IndexError) as e:
-                        raise Exception(f"Failed to parse container info: {str(e)}")
-                    
-                except Exception as e:
-                    logging.error(f"Error inspecting container: {str(e)}")
-                    if error_callback:
-                        self._invoke_callback(error_callback, str(e))
-            
-            # Connect thread
-            thread.run = run_inspect
-            thread.finished.connect(lambda: self.threads.remove(thread) if thread in self.threads else None)
-            self.threads.append(thread)
-            thread.start()
-        else:
-            # Run synchronously for backwards compatibility
-            command = ['docker', 'inspect', name]
-            stdout, stderr, return_code = self.execute_command(command)
-            if return_code != 0:
-                raise Exception(f"Failed to inspect container {name}: {stderr}")
-                
-            try:
-                return json.loads(stdout)[0]
-            except (json.JSONDecodeError, IndexError) as e:
-                raise Exception(f"Failed to parse container info: {str(e)}")
+        try:
+            return json.loads(stdout)[0]
+        except (json.JSONDecodeError, IndexError) as e:
+            raise Exception(f"Failed to parse container info: {str(e)}")
 
-    def is_container_running(self, container_name: str = None, callback=None, error_callback=None) -> None:
+    def is_container_running(self, container_name: str = None) -> bool:
         """Check if a container is running.
         
         Args:
             container_name: Name of container to check. If None, uses self.container_name
-            callback: Function to call with running status (boolean)
-            error_callback: Function to call on error
             
         Returns:
-            bool: True if container is running (only if no callbacks provided)
+            bool: True if container is running
         """
-        name = container_name or self.container_name
-        
-        # If callbacks provided, run asynchronously
-        if callback:
-            def on_inspect_success(container_info):
-                running = container_info.get('State', {}).get('Running', False)
-                # Call success callback with running status
-                self._invoke_callback(callback, running)
-            
-            # Call inspect with callbacks
-            self.inspect_container(name, on_inspect_success, error_callback)
-        else:
-            # Run synchronously for backwards compatibility
-            try:
-                info = self.inspect_container(name)
-                return info.get('State', {}).get('Running', False)
-            except Exception:
-                return False
-
-    def list_containers(self, all_containers=True, callback=None, error_callback=None) -> None:
-        """List all edge node containers.
-        
-        Args:
-            all_containers: If True, show all containers including stopped ones
-            callback: Function to call with results
-            error_callback: Function to call on error
-        """
-        # If callbacks provided, run asynchronously
-        if callback:
-            thread = QThread()
-            
-            def run_list():
-                try:
-                    command = [
-                        'docker', 'ps',
-                        '--format', '{{.Names}}\t{{.Status}}\t{{.ID}}',
-                        '-f', 'name=r1node'
-                    ]
-                    if all_containers:
-                        command.append('-a')
-                        
-                    stdout, stderr, return_code = self.execute_command(command)
-                    if return_code != 0:
-                        raise Exception(f"Failed to list containers: {stderr}")
-                        
-                    containers = []
-                    for line in stdout.splitlines():
-                        if line.strip():
-                            name, status, container_id = line.split('\t')
-                            containers.append({
-                                'name': name,
-                                'status': status,
-                                'id': container_id,
-                                'running': 'Up' in status
-                            })
-                    
-                    # Call success callback with results
-                    self._invoke_callback(callback, containers)
-                except Exception as e:
-                    logging.error(f"Error listing containers: {str(e)}")
-                    if error_callback:
-                        self._invoke_callback(error_callback, str(e))
-            
-            # Connect thread
-            thread.run = run_list
-            thread.finished.connect(lambda: self.threads.remove(thread) if thread in self.threads else None)
-            self.threads.append(thread)
-            thread.start()
-        else:
-            # Run synchronously for backwards compatibility
-            command = [
-                'docker', 'ps',
-                '--format', '{{.Names}}\t{{.Status}}\t{{.ID}}',
-                '-f', 'name=r1node'
-            ]
-            if all_containers:
-                command.append('-a')
-                
-            stdout, stderr, return_code = self.execute_command(command)
-            if return_code != 0:
-                raise Exception(f"Failed to list containers: {stderr}")
-                
-            containers = []
-            for line in stdout.splitlines():
-                if line.strip():
-                    name, status, container_id = line.split('\t')
-                    containers.append({
-                        'name': name,
-                        'status': status,
-                        'id': container_id,
-                        'running': 'Up' in status
-                    })
-            return containers
-
-    def create_loading_callbacks(self, loading_start_fn, loading_end_fn, on_success_fn=None, on_error_fn=None):
-        """Creates a pair of callbacks that handle showing/hiding loading indicators along with success/error actions.
-        
-        Args:
-            loading_start_fn: Function to call to show loading indicator
-            loading_end_fn: Function to call to hide loading indicator
-            on_success_fn: Optional function to call on successful operation (after loading ends)
-            on_error_fn: Optional function to call on operation error (after loading ends)
-            
-        Returns:
-            tuple: (success_callback, error_callback) functions to use with Docker operations
-        """
-        # Call the loading start function immediately
-        if loading_start_fn:
-            loading_start_fn()
-        
-        def success_callback(*args, **kwargs):
-            # First hide the loading indicator
-            if loading_end_fn:
-                loading_end_fn()
-            # Then call the success function if provided
-            if on_success_fn:
-                on_success_fn(*args, **kwargs)
-        
-        def error_callback(error_message):
-            # First hide the loading indicator
-            if loading_end_fn:
-                loading_end_fn()
-            # Then call the error function if provided
-            if on_error_fn:
-                on_error_fn(error_message)
-            else:
-                # Default error handling
-                logging.error(f"Operation failed: {error_message}")
-        
-        return success_callback, error_callback
-
-    # Helper method for consistent invocation of Qt callbacks
-    def _invoke_callback(self, callback_fn, *args):
-        """Helper method to consistently invoke Qt callbacks
-        
-        Args:
-            callback_fn: The callback function to invoke
-            *args: Arguments to pass to the callback
-        """
-        from PyQt5.QtCore import QMetaObject, Qt, Q_ARG, QVariant
-        
-        # For single arg, use the simpler form
-        if len(args) == 0:
-            QMetaObject.invokeMethod(callback_fn, Qt.QueuedConnection)
-        elif len(args) == 1 and isinstance(callback_fn, str) and callback_fn == "call":
-            # This case means we're calling a method named "call" on an object
-            # The first arg is the one we're passing to that method
-            QMetaObject.invokeMethod(args[0], "call", Qt.QueuedConnection)
-        else:
-            # Convert all arguments to QVariant for safety
-            qt_args = [Q_ARG(QVariant, arg) for arg in args]
-            QMetaObject.invokeMethod(callback_fn, "call", Qt.QueuedConnection, *qt_args)
-
-    def start_container_with_loading(self, loading_start_fn, loading_end_fn, volume_name=None, on_success=None, on_error=None):
-        """Start a container with loading indicator handling.
-        
-        Args:
-            loading_start_fn: Function to call to show loading indicator
-            loading_end_fn: Function to call to hide loading indicator
-            volume_name: Optional volume name to mount
-            on_success: Optional function to call when container starts successfully
-            on_error: Optional function to call if container start fails
-        """
-        success_cb, error_cb = self.create_loading_callbacks(
-            loading_start_fn, loading_end_fn, on_success, on_error
-        )
-        self.launch_container(volume_name, success_cb, error_cb)
-    
-    def stop_container_with_loading(self, loading_start_fn, loading_end_fn, container_name=None, on_success=None, on_error=None):
-        """Stop a container with loading indicator handling.
-        
-        Args:
-            loading_start_fn: Function to call to show loading indicator
-            loading_end_fn: Function to call to hide loading indicator
-            container_name: Name of container to stop. If None, uses self.container_name
-            on_success: Optional function to call when container stops successfully
-            on_error: Optional function to call if container stop fails
-        """
-        success_cb, error_cb = self.create_loading_callbacks(
-            loading_start_fn, loading_end_fn, on_success, on_error
-        )
-        self.stop_container(container_name, success_cb, error_cb)
+        try:
+            info = self.inspect_container(container_name)
+            return info.get('State', {}).get('Running', False)
+        except Exception:
+            return False
