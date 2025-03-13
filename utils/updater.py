@@ -64,8 +64,10 @@ class _UpdaterMixin:
     return local_filename
 
   def _extract_zip(self, zip_path, extract_to):
+    self.add_log(f'Extracting {zip_path} to {extract_to}')
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
       zip_ref.extractall(extract_to)
+    self.add_log(f'Extraction complete')
 
 
   def _replace_executable(self, download_path, executable_name):
@@ -76,7 +78,7 @@ class _UpdaterMixin:
     self.add_log(f'Preparing executable replacement of: {current_executable}')
     
     if sys.platform == "win32":
-      # For Windows, we download the .exe directly
+      # For Windows, directly replace the .exe file
       new_executable = download_path
       current_folder = os.path.dirname(current_executable)
       executable_basename = os.path.basename(current_executable)
@@ -87,29 +89,19 @@ class _UpdaterMixin:
       # Create a batch script to replace the executable after the current process exits
       script_path = os.path.join(os.path.dirname(download_path), 'replace_executable.bat')
       
-      self.add_log(f"Executable to replace: {executable_basename}", debug=True)
+      self.add_log(f"Executable to replace: {executable_basename} in {current_folder}", debug=True)
       
-      # Use xcopy instead of copy for better error handling
-      move_cmd = f'xcopy /Y /F "{new_executable}" "{current_executable}"'
+      # Use copy for direct file replacement
+      copy_cmd = f'copy /Y /B "{new_executable}" "{current_executable}"'
       
-      self.add_log(f"Copy command: {move_cmd}", debug=True)
+      self.add_log(f"Copy command: {copy_cmd}", debug=True)
       self.add_log(f"Creating update script: {script_path}", debug=True)
-      
-      # Get process IDs for current app before closing
-      try:
-          import psutil
-          current_pid = os.getpid()
-          self.add_log(f"Current process ID: {current_pid}", debug=True)
-      except ImportError:
-          current_pid = None
-          self.add_log("psutil not available to get process ID", debug=True)
       
       # Create the batch file with proper admin elevation
       with open(script_path, 'w') as script:
         # Add UAC elevation script for admin privileges
         if requires_admin:
           script.write(f"""@echo off
-echo ========================================
 echo EdgeNodeLauncher Update Process
 echo ========================================
 echo Starting update process...
@@ -137,8 +129,8 @@ if '%errorlevel%' NEQ '0' (
 echo Administrative privileges acquired.
 echo Waiting for application to close...
 
-:: Wait for the application to close with a timeout
-set MAX_WAIT=30
+:: Wait for the application to close with a shorter timeout
+set MAX_WAIT=10
 set COUNTER=0
 
 :loop
@@ -147,52 +139,63 @@ if "%ERRORLEVEL%"=="0" (
     echo Process {executable_basename} is still running... (%COUNTER%/%MAX_WAIT% seconds)
     set /a COUNTER+=1
     if %COUNTER% GEQ %MAX_WAIT% (
-        echo Process wait timeout reached. Attempting to force proceed.
-        choice /C YN /M "Process did not exit. Try to update anyway?"
-        if errorlevel 2 goto :cancel
-        goto :proceed
+        echo Process wait timeout reached. Proceeding with update anyway.
+        goto proceed
     )
     timeout /T 1 /NOBREAK >NUL
     goto loop
 )
 
 :proceed
-echo No running instances of {executable_basename} found or timeout reached.
-echo Application closed. Copying new version...
+echo Application closed or timeout reached. 
+echo Copying new executable to {current_folder}...
+
+:: Give it a moment to fully release files
+timeout /T 2 /NOBREAK >NUL
+
+:: Create a backup of the current executable
+echo Creating backup of current executable...
+copy /Y /B "{current_executable}" "{current_executable}.bak"
 
 :: Copy the new executable
-{move_cmd}
+echo Running: {copy_cmd}
+{copy_cmd}
 if %errorlevel% neq 0 (
-    echo Failed to copy file. Error code: %errorlevel%
-    echo This might be because the file is still in use.
-    echo.
+    echo Copy failed with code: %errorlevel%
+    echo Restoring from backup...
+    copy /Y /B "{current_executable}.bak" "{current_executable}"
+    echo Update failed. Please try again or contact support.
     pause
-    exit /B %errorlevel%
+    goto exit_script
 )
 
-echo Update successful. Launching application...
-timeout /T 2 /NOBREAK >NUL
-start "" "{current_executable}"
-echo Done.
-del "%~f0"
-exit
+:: Make sure the executable has the right permissions
+echo Setting permissions...
+icacls "{current_executable}" /grant Everyone:F
 
-:cancel
-echo Update cancelled by user.
-pause
-exit /B 1
+echo Update successful. Launching application...
+timeout /T 1 /NOBREAK >NUL
+cd /D "{current_folder}"
+start "" "{current_executable}"
+
+:exit_script
+echo Cleaning up...
+:: Delete the temporary files
+del "{new_executable}" 2>NUL
+echo Done.
+:: Delete the batch file and close the window
+(goto) 2>nul & del "%~f0" & exit
 """)
         else:
           # Regular non-admin script for user directories
           script.write(f"""@echo off
-echo ========================================
 echo EdgeNodeLauncher Update Process
 echo ========================================
 echo Starting update process...
 echo Waiting for application to close...
 
-:: Wait for the application to close with a timeout
-set MAX_WAIT=30
+:: Wait for the application to close with a shorter timeout
+set MAX_WAIT=10
 set COUNTER=0
 
 :loop
@@ -201,59 +204,75 @@ if "%ERRORLEVEL%"=="0" (
     echo Process {executable_basename} is still running... (%COUNTER%/%MAX_WAIT% seconds)
     set /a COUNTER+=1
     if %COUNTER% GEQ %MAX_WAIT% (
-        echo Process wait timeout reached. Attempting to force proceed.
-        choice /C YN /M "Process did not exit. Try to update anyway?"
-        if errorlevel 2 goto :cancel
-        goto :proceed
+        echo Process wait timeout reached. Proceeding with update anyway.
+        goto proceed
     )
     timeout /T 1 /NOBREAK >NUL
     goto loop
 )
 
 :proceed
-echo No running instances of {executable_basename} found or timeout reached.
-echo Application closed. Copying new version...
+echo Application closed or timeout reached.
+echo Copying new executable to {current_folder}...
+
+:: Give it a moment to fully release files
+timeout /T 2 /NOBREAK >NUL
+
+:: Create a backup of the current executable
+echo Creating backup of current executable...
+copy /Y /B "{current_executable}" "{current_executable}.bak"
 
 :: Copy the new executable
-{move_cmd}
+echo Running: {copy_cmd}
+{copy_cmd}
 if %errorlevel% neq 0 (
-    echo Failed to copy file. Error code: %errorlevel%
-    echo This might be because the file is still in use.
-    echo.
+    echo Copy failed with code: %errorlevel%
+    echo Restoring from backup...
+    copy /Y /B "{current_executable}.bak" "{current_executable}"
+    echo Update failed. Please try again or contact support.
     pause
-    exit /B %errorlevel%
+    goto exit_script
 )
 
 echo Update successful. Launching application...
-timeout /T 2 /NOBREAK >NUL
+timeout /T 1 /NOBREAK >NUL
+cd /D "{current_folder}"
 start "" "{current_executable}"
-echo Done.
-del "%~f0"
-exit
 
-:cancel
-echo Update cancelled by user.
-pause
-exit /B 1
+:exit_script
+echo Cleaning up...
+:: Delete the temporary files
+del "{new_executable}" 2>NUL
+echo Done.
+:: Delete the batch file and close the window
+(goto) 2>nul & del "%~f0" & exit
 """)
 
-      # Execute the batch script in a new window so user can see the progress
+      # Execute the batch script with a hidden window
       self.add_log(f'Batch script created: {script_path}')
       
-      # Run with a visible window directly without a launcher script
+      # Use a different window style that will auto-close when finished
+      startupinfo = None
+      if hasattr(subprocess, 'STARTUPINFO'):
+          startupinfo = subprocess.STARTUPINFO()
+          if hasattr(subprocess, 'STARTF_USESHOWWINDOW'):
+              startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+              # Show window minimized and not focused
+              startupinfo.wShowWindow = 7  # SW_SHOWMINNOACTIVE
+      
+      # Run the updater script with a minimized window that will close itself
       self.add_log(f'Executing updater script: {script_path}')
       
-      # Try to kill any existing updater processes first
-      try:
-          for proc in subprocess.check_output(["tasklist", "/FI", "WINDOWTITLE eq EdgeNodeLauncher Update"]).decode().strip().split('\n'):
-              if "cmd.exe" in proc:
-                  pid = int(proc.split()[1])
-                  subprocess.call(["taskkill", "/F", "/PID", str(pid)])
-      except Exception as e:
-          self.add_log(f"Failed to kill existing updater processes: {e}", debug=True)
-      
-      # Start the update script with a visible window
-      subprocess.Popen(["cmd", "/c", "start", "EdgeNodeLauncher Update", script_path], shell=True)
+      # Start the script in a way that it will close itself when done
+      if requires_admin:
+          # For admin scripts, we need to show the UAC prompt
+          subprocess.Popen(["cmd", "/c", "start", "/min", script_path], shell=True)
+      else:
+          # For non-admin scripts, we can use a more hidden approach
+          subprocess.Popen(["cmd", "/c", script_path], 
+                           shell=True,
+                           startupinfo=startupinfo,
+                           creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0)
 
     elif sys.platform == "darwin":
       # For macOS, we need to handle the app bundle
@@ -369,13 +388,12 @@ exit /B 1
             # For macOS, extract the zip file
             if platform_system == 'Darwin':
                 self.add_log(f'Extracting update from {downloaded_file}...')
-                self._extract_zip(downloaded_file, download_dir)
+                self._extract_zip(downloaded_file, os.path.dirname(downloaded_file))
             
             # Show final confirmation before proceeding with update
             QMessageBox.information(None, 'Ready to Update', 
                                    'The update has been downloaded. The application will now close and update itself.\n\n' +
-                                   'Please wait for the update process to complete.\n' +
-                                   'If the application does not restart automatically after 1 minute, please start it manually.')
+                                   'The application will automatically restart when the update is complete.')
             
             # Replace the executable
             self._replace_executable(downloaded_file, 'EdgeNodeLauncher')
