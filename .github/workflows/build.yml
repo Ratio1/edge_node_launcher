@@ -143,6 +143,39 @@ jobs:
           rm dist/EdgeNodeLauncher.exe
           mv signed/EdgeNodeLauncher.exe dist/EdgeNodeLauncher.exe
 
+      - name: Create msi
+        if: runner.os == 'Windows'
+        run: ./build_scripts/build_msi.bat
+
+      - name: Sign the msi installer
+        if: runner.os == 'Windows'
+        uses: sslcom/esigner-codesign@develop
+        with:
+          # Sign and timestamp code object.
+          command: sign
+          # SSL.com account username
+          username: ${{ secrets.SSL_USERNAME }}
+          # SSL.com account password.
+          password: ${{ secrets.SSL_PASSWORD }}
+          # Credential ID for signing certificate.
+          credential_id: ${{ secrets.SSL_CREDENTIAL_ID }}
+          # OAuth TOTP Secret (https://www.ssl.com/how-to/automate-esigner-ev-code-signing)
+          totp_secret: ${{ secrets.SSL_TOTP_SECRET }}
+          # Path of code object to be signed. (DLL, JAR, EXE, MSI files vb... )
+          file_path: ${{ github.workspace }}/dist/EdgeNodeLauncher.msi
+          # Directory where signed code object(s) will be written.
+          output_path: ${{ github.workspace }}/signed
+          # Scan code before sign
+          malware_block: true
+          # Environment Name, For Production 'PROD' or For Staging 'TEST'
+          environment_name: PROD
+
+      - name: Replace non-signed version with signed one
+        if: runner.os == 'Windows'
+        run: |
+          rm dist/EdgeNodeLauncher.msi
+          mv signed/EdgeNodeLauncher.msi dist/EdgeNodeLauncher.msi
+
       - name: Zip App
         run: ${{ matrix.zip }}
       - name: Save zip File as artifact
@@ -157,6 +190,23 @@ jobs:
         with:
           file: ./${{ matrix.name }}.zip
           asset_name: ${{ matrix.name }}-v${{ env.VERSION }}.zip
+          repo_name: ${{ github.repository }}
+          overwrite: true
+
+      - name: Upload MSI as artifact
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: EdgeNodeLauncher-MSI-v${{ env.VERSION }}
+          path: dist/EdgeNodeLauncher.msi
+          overwrite: true
+
+      - name: Upload MSI to release
+        if: runner.os == 'Windows'
+        uses: svenstaro/upload-release-action@master
+        with:
+          file: dist/EdgeNodeLauncher.msi
+          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}.msi
           repo_name: ${{ github.repository }}
           overwrite: true
 
@@ -178,11 +228,16 @@ jobs:
           path: release
           merge-multiple: true
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: EdgeNodeLauncher-MSI-v${{ steps.retrieve_version.outputs.VERSION }}
+          path: release
+
       - run: ls release
 
       - uses: ncipollo/release-action@v1
         with:
-          artifacts: release/*.zip
+          artifacts: release/*.zip,release/*.msi
           name: Version ${{ steps.retrieve_version.outputs.version }}
           allowUpdates: true
           tag: ${{ steps.retrieve_version.outputs.version }}
