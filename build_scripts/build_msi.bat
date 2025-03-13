@@ -16,6 +16,9 @@ echo Building MSI installer...
 REM Create temporary WiX files directory
 if not exist wix mkdir wix
 
+REM Copy EULA.rtf to the wix directory
+copy build_scripts\EULA.rtf wix\EULA.rtf
+
 REM Create a dead-simple WiX file with minimal features
 echo ^<?xml version="1.0" encoding="UTF-8"?^> > wix\product.wxs
 echo ^<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"^> >> wix\product.wxs
@@ -24,6 +27,7 @@ echo     ^<Package InstallerVersion="200" Compressed="yes" /^> >> wix\product.wx
 echo     ^<MediaTemplate EmbedCab="yes" /^> >> wix\product.wxs
 echo     ^<Icon Id="AppIcon.ico" SourceFile="%OUTPUT_DIR%\%APP_NAME%.exe" /^> >> wix\product.wxs
 echo     ^<Property Id="ARPPRODUCTICON" Value="AppIcon.ico" /^> >> wix\product.wxs
+echo     ^<WixVariable Id="WixUILicenseRtf" Value="wix\EULA.rtf" /^> >> wix\product.wxs
 echo     ^<Feature Id="ProductFeature" Title="EdgeNodeLauncher" Level="1"^> >> wix\product.wxs
 echo       ^<ComponentRef Id="ApplicationComponent" /^> >> wix\product.wxs
 echo       ^<ComponentRef Id="DesktopShortcutComponent" /^> >> wix\product.wxs

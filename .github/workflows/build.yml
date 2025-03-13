@@ -5,12 +5,6 @@ name: Multi-step multi-platform build
 on:
   push:
     branches: ["main"]
-  workflow_dispatch:
-    inputs:
-      branch:
-        description: "Branch to run the workflow on"
-        required: true
-        default: "main"
 
 jobs:
   check-version:
@@ -67,21 +61,21 @@ jobs:
             build: |
               chmod +x build_scripts/unix_build.sh
               ./build_scripts/unix_build.sh
-            name: EdgeNodeLauncher-LINUX_Ubuntu-24.04
+            name: LINUX_Ubuntu-24.04
             platformDependencies: sudo apt-get update && sudo apt install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
 
           - os: ubuntu-22.04
             build: |
               chmod +x build_scripts/unix_build.sh
               ./build_scripts/unix_build.sh
-            name: EdgeNodeLauncher-LINUX_Ubuntu-22.04
+            name: LINUX_Ubuntu-22.04
             platformDependencies: sudo apt-get update && sudo apt install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
 
           - os: ubuntu-20.04
             build: |
               chmod +x build_scripts/unix_build.sh
               ./build_scripts/unix_build.sh
-            name: EdgeNodeLauncher-LINUX_Ubuntu-20.04
+            name: LINUX_Ubuntu-20.04
             platformDependencies: sudo apt-get update && sudo apt-get install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
 
           - os: macos-latest
@@ -107,6 +101,18 @@ jobs:
           VERSION=$(cat ver.py | grep -o "'.*'" | tr -d "'")
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+      
+      # Create release
+      - name: Create Release
+        id: create_release
+        uses: ncipollo/release-action@v1
+        with:
+          name: Version ${{ env.VERSION }}
+          tag: ${{ env.VERSION }}
+          allowUpdates: true
+          draft: false
+          makeLatest: true
+          
       - run: ${{ matrix.platformDependencies }}
       - name: Setup env
         run: |
@@ -204,14 +210,13 @@ jobs:
           path: dist/EdgeNodeLauncher
           overwrite: true
 
-      # Upload macOS app
-      - name: Upload macOS app as artifact
+      # For macOS, zip the .app directory first
+      - name: Zip macOS App
         if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
-        with:
-          name: EdgeNodeLauncher-${{ matrix.name }}-v${{ env.VERSION }}
-          path: dist/EdgeNodeLauncher.app
-          overwrite: true
+        run: |
+          cd dist
+          zip -r EdgeNodeLauncher-v${{ env.VERSION }}-macOS.zip EdgeNodeLauncher.app
+          cd ..
 
       # Upload Windows EXE to release
       - name: Upload Windows EXE to release
@@ -220,6 +225,7 @@ jobs:
         with:
           file: dist/EdgeNodeLauncher.exe
           asset_name: EdgeNodeLauncher-Windows-v${{ env.VERSION }}.exe
+          tag: ${{ env.VERSION }}
           repo_name: ${{ github.repository }}
           overwrite: true
 
@@ -230,6 +236,7 @@ jobs:
         with:
           file: dist/EdgeNodeLauncher.msi
           asset_name: EdgeNodeLauncher-Windows-v${{ env.VERSION }}.msi
+          tag: ${{ env.VERSION }}
           repo_name: ${{ github.repository }}
           overwrite: true
 
@@ -239,7 +246,8 @@ jobs:
         uses: svenstaro/upload-release-action@master
         with:
           file: dist/EdgeNodeLauncher
-          asset_name: EdgeNodeLauncher-${{ matrix.name }}-v${{ env.VERSION }}
+          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}
+          tag: ${{ env.VERSION }}
           repo_name: ${{ github.repository }}
           overwrite: true
 
@@ -248,8 +256,9 @@ jobs:
         if: runner.os == 'macOS'
         uses: svenstaro/upload-release-action@master
         with:
-          file: dist/EdgeNodeLauncher.app
-          asset_name: EdgeNodeLauncher-macOS-v${{ env.VERSION }}.app
+          file: dist/EdgeNodeLauncher-v${{ env.VERSION }}-macOS.zip
+          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-macOS.zip
+          tag: ${{ env.VERSION }}
           repo_name: ${{ github.repository }}
           overwrite: true
 
@@ -263,16 +272,11 @@ jobs:
       - name: Retrieve version
         id: retrieve_version
         run: |
-          echo "VERSION=$(cat ver.py | grep -o "'.*'")" >> $GITHUB_OUTPUT
-
+          VERSION=$(cat ver.py | grep -o "'.*'" | tr -d "'")
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          
       # For potential debugging
       - name: List available artifacts
         run: |
           echo "This step only lists artifacts that were made available to download"
-          echo "VERSION: ${{ steps.retrieve_version.outputs.VERSION }}"
-
-      - uses: ncipollo/release-action@v1
-        with:
-          name: Version ${{ steps.retrieve_version.outputs.version }}
-          allowUpdates: true
-          tag: ${{ steps.retrieve_version.outputs.version }}
+          echo "VERSION: ${{ env.VERSION }}"
