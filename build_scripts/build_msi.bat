@@ -16,44 +16,51 @@ echo Building MSI installer...
 REM Create temporary WiX files directory
 if not exist wix mkdir wix
 
-REM Create EULA directly in the wix directory
-echo Generating EULA file...
-(
-echo {\rtf1\ansi\ansicpg1252\deff0\nouicompat\deflang1033{\fonttbl{\f0\fnil\fcharset0 Calibri;}}
-echo {\*\generator Riched20 10.0.19041}\viewkind4\uc1
-echo \pard\sa200\sl276\slmult1\f0\fs22\lang9 END USER LICENSE AGREEMENT FOR EDGENODELAUNCHER\par
-echo \par
-echo IMPORTANT: PLEASE READ THIS END USER LICENSE AGREEMENT CAREFULLY BEFORE INSTALLING THE EDGENODELAUNCHER APPLICATION.\par
-echo \par
-echo By installing or using the EdgeNodeLauncher application, you agree to be bound by the terms of this Agreement. If you do not agree, do not install or use the application.\par
-echo \par
-echo 1. LICENSE GRANT\par
-echo You are granted a non-exclusive license to use the software for personal or business purposes.\par
-echo \par
-echo 2. RESTRICTIONS\par
-echo You may not reverse engineer, decompile, or disassemble the software.\par
-echo \par
-echo 3. NO WARRANTY\par
-echo THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.\par
-echo \par
-echo 4. LIMITATION OF LIABILITY\par
-echo IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY DAMAGES ARISING FROM THE USE OF THIS SOFTWARE.\par
-echo \par
-echo 5. GOVERNING LAW\par
-echo This agreement is governed by the laws of the jurisdiction where the software owner is located.\par
-echo }
-) > "wix\License.rtf"
+REM Check if License.rtf already exists in wix directory (created by GitHub Actions)
+if exist "wix\License.rtf" (
+    echo EULA file already exists in wix directory.
+    echo EULA content:
+    type "wix\License.rtf"
+) else (
+    REM Create EULA directly in the wix directory
+    echo Generating EULA file...
+    (
+    echo {\rtf1\ansi\ansicpg1252\deff0\nouicompat\deflang1033{\fonttbl{\f0\fnil\fcharset0 Calibri;}}
+    echo {\*\generator Riched20 10.0.19041}\viewkind4\uc1
+    echo \pard\sa200\sl276\slmult1\f0\fs22\lang9 END USER LICENSE AGREEMENT FOR EDGENODELAUNCHER\par
+    echo \par
+    echo IMPORTANT: PLEASE READ THIS END USER LICENSE AGREEMENT CAREFULLY BEFORE INSTALLING THE EDGENODELAUNCHER APPLICATION.\par
+    echo \par
+    echo By installing or using the EdgeNodeLauncher application, you agree to be bound by the terms of this Agreement. If you do not agree, do not install or use the application.\par
+    echo \par
+    echo 1. LICENSE GRANT\par
+    echo You are granted a non-exclusive license to use the software for personal or business purposes.\par
+    echo \par
+    echo 2. RESTRICTIONS\par
+    echo You may not reverse engineer, decompile, or disassemble the software.\par
+    echo \par
+    echo 3. NO WARRANTY\par
+    echo THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.\par
+    echo \par
+    echo 4. LIMITATION OF LIABILITY\par
+    echo IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY DAMAGES ARISING FROM THE USE OF THIS SOFTWARE.\par
+    echo \par
+    echo 5. GOVERNING LAW\par
+    echo This agreement is governed by the laws of the jurisdiction where the software owner is located.\par
+    echo }
+    ) > "wix\License.rtf"
 
-REM Verify EULA file was created
-if not exist "wix\License.rtf" (
-    echo ERROR: Failed to create EULA file.
-    exit /b 1
+    REM Verify EULA file was created
+    if not exist "wix\License.rtf" (
+        echo ERROR: Failed to create EULA file.
+        exit /b 1
+    )
+
+    echo EULA file created successfully.
+    echo =============EULA CONTENT:=============
+    type "wix\License.rtf"
+    echo =======================================
 )
-
-echo EULA file created successfully.
-echo =============EULA CONTENT:=============
-type "wix\License.rtf"
-echo =======================================
 
 REM Create a dead-simple WiX file with minimal features
 echo ^<?xml version="1.0" encoding="UTF-8"?^> > wix\product.wxs
