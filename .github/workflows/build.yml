@@ -22,7 +22,6 @@ jobs:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0 # Fetches all history for all branches and tags
-          ref: ${{ github.event.inputs.branch || 'main' }}  # Use input branch or default to main
 
       # Step to fetch the latest release version
       - name: Get latest release version
@@ -97,8 +96,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
-        with:
-          ref: ${{ github.event.inputs.branch || 'main' }}  # Use input branch or default to main
       - name: Set up Python 3.10.11
         uses: actions/setup-python@v2
         with:
@@ -263,8 +260,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
-        with:
-          ref: ${{ github.event.inputs.branch || 'main' }}  # Use input branch or default to main
       - name: Retrieve version
         id: retrieve_version
         run: |
