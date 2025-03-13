@@ -9,8 +9,8 @@ from PyQt5.QtWidgets import QMessageBox
 
 from ver import __VER__ as CURRENT_VERSION
 
-GITHUB_API_URL = 'https://api.github.com/repos/vitalii-t12/edge_node_launcher_private/releases/latest'
-# GITHUB_API_URL = 'https://api.github.com/repos/Ratio1/edge_node_launcher/releases/latest'
+
+GITHUB_API_URL = 'https://api.github.com/repos/Ratio1/edge_node_launcher/releases/latest'
 DOWNLOAD_DIR = 'downloads'
 
 class _UpdaterMixin:
