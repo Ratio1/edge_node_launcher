@@ -120,6 +120,28 @@ class LoadingDialog(QDialog):
         """
         if hasattr(self, 'info_label'):
             self.info_label.setText(message)
+            # Process events to ensure UI updates immediately
+            QApplication.processEvents()
+    
+    def update_progress(self, message, process_events=True):
+        """Update the dialog with progress information.
+        
+        Args:
+            message: Progress message to display
+            process_events: Whether to process Qt events after updating
+        """
+        self.set_message(message)
+        if process_events:
+            # Process events to ensure UI remains responsive
+            QApplication.processEvents()
+    
+    def keep_alive(self):
+        """Process events to ensure the dialog remains responsive.
+        
+        This method can be called periodically during long operations
+        to ensure the UI doesn't freeze.
+        """
+        QApplication.processEvents()
     
     def showEvent(self, event):
         """Override show event to ensure dialog is processed and visible."""
