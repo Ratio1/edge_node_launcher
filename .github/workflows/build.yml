@@ -113,14 +113,14 @@ jobs:
           draft: false
           makeLatest: true
           
-      # Prepare for Windows build
-      - name: Prepare for Windows build
-        if: runner.os == 'Windows'
-        shell: cmd
-        run: |
-          mkdir -p wix
-          echo Wix directory created for self-contained license handling
-          
+#      # Prepare for Windows build
+#      - name: Prepare for Windows build
+#        if: runner.os == 'Windows'
+#        shell: cmd
+#        run: |
+#          mkdir -p wix
+#          echo Wix directory created for self-contained license handling
+#
       - run: ${{ matrix.platformDependencies }}
       - name: Setup env
         run: |
