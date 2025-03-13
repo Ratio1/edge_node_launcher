@@ -7,7 +7,8 @@
     <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" /> 
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" /> 
     <UIRef Id="WixUI_InstallDir" /> 
-    <WixVariable Id="WixUILicenseRtf" Value="wix\License.rtf" /> 
+    <Binary Id="LicenseRtf" SourceFile="wix\license_embedded.rtf" /> 
+    <WixVariable Id="WixUILicenseRtf" Value="wix\license_embedded.rtf" /> 
     <Feature Id="ProductFeature" Title="EdgeNodeLauncher" Level="1"> 
       <ComponentRef Id="ApplicationComponent" /> 
       <ComponentRef Id="DesktopShortcutComponent" /> 

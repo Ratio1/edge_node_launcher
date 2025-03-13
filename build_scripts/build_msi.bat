@@ -18,7 +18,7 @@ if not exist wix mkdir wix
 
 REM Create a minimal RTF license file in-memory
 set "LICENSE_TEXT=END USER LICENSE AGREEMENT FOR EDGENODELAUNCHER\par\par"
-set "LICENSE_TEXT=!LICENSE_TEXT!IMPORTANT: PLEASE READ THIS AGREEMENT CAREFULLY BEFORE INSTALLING.\par\par"
+set "LICENSE_TEXT=!LICENSE_TEXT!IMPORTANT: 11PLEASE READ THIS AGREEMENT CAREFULLY BEFORE INSTALLING.\par\par"
 set "LICENSE_TEXT=!LICENSE_TEXT!By installing or using the EdgeNodeLauncher, you agree to be bound by this Agreement.\par\par"
 set "LICENSE_TEXT=!LICENSE_TEXT!1. LICENSE GRANT: You are granted a non-exclusive license to use this software.\par\par"
 set "LICENSE_TEXT=!LICENSE_TEXT!2. RESTRICTIONS: Do not reverse engineer or decompile the software.\par\par"
@@ -72,7 +72,7 @@ REM Create the embedded license file directly
 echo Creating embedded license RTF file...
 echo {\rtf1\ansi\deff0{\fonttbl{\f0\froman\fprq2\fcharset0 Times New Roman;}}\viewkind4\uc1\pard\lang1033\f0\fs20 > "wix\license_embedded.rtf"
 echo END USER LICENSE AGREEMENT FOR EDGENODELAUNCHER\par\par >> "wix\license_embedded.rtf"
-echo IMPORTANT: PLEASE READ THIS AGREEMENT CAREFULLY BEFORE INSTALLING.\par\par >> "wix\license_embedded.rtf"
+echo IMPORTANT: 22PLEASE READ THIS AGREEMENT CAREFULLY BEFORE INSTALLING.\par\par >> "wix\license_embedded.rtf"
 echo By installing or using the EdgeNodeLauncher, you agree to be bound by this Agreement.\par\par >> "wix\license_embedded.rtf"
 echo 1. LICENSE GRANT: You are granted a non-exclusive license to use this software.\par\par >> "wix\license_embedded.rtf"
 echo 2. RESTRICTIONS: Do not reverse engineer or decompile the software.\par\par >> "wix\license_embedded.rtf"
