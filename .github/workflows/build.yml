@@ -118,6 +118,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: cmd
         run: |
+          mkdir -p wix
           echo Creating extremely simple EULA RTF file...
           echo {\rtf1\ansi\deff0{\fonttbl{\f0\froman\fprq2\fcharset0 Times New Roman;}}\viewkind4\uc1\pard\lang1033\f0\fs20 > "wix\License.rtf"
           echo END USER LICENSE AGREEMENT FOR EDGENODELAUNCHER\par\par >> "wix\License.rtf"

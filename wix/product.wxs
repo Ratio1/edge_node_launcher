@@ -5,6 +5,8 @@
     <MediaTemplate EmbedCab="yes" /> 
     <Icon Id="AppIcon.ico" SourceFile="dist\EdgeNodeLauncher.exe" /> 
     <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" /> 
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" /> 
+    <UIRef Id="WixUI_InstallDir" /> 
     <WixVariable Id="WixUILicenseRtf" Value="wix\License.rtf" /> 
     <Feature Id="ProductFeature" Title="EdgeNodeLauncher" Level="1"> 
       <ComponentRef Id="ApplicationComponent" /> 
@@ -31,7 +33,5 @@
         </Component> 
       </Directory> 
     </Directory> 
-    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" /> 
-    <UIRef Id="WixUI_InstallDir" /> 
   </Product> 
 </Wix> 

@@ -16,6 +16,25 @@ echo Building MSI installer...
 REM Create temporary WiX files directory
 if not exist wix mkdir wix
 
+REM Verify EULA license file exists
+if not exist "wix\License.rtf" (
+    echo Error: wix\License.rtf not found.
+    echo Creating a simple EULA file...
+    
+    echo {\rtf1\ansi\deff0{\fonttbl{\f0\froman\fprq2\fcharset0 Times New Roman;}}\viewkind4\uc1\pard\lang1033\f0\fs20 > "wix\License.rtf"
+    echo END USER LICENSE AGREEMENT FOR EDGENODELAUNCHER\par\par >> "wix\License.rtf"
+    echo IMPORTANT: PLEASE READ THIS AGREEMENT CAREFULLY BEFORE INSTALLING.\par\par >> "wix\License.rtf"
+    echo By installing or using the EdgeNodeLauncher, you agree to be bound by this Agreement.\par\par >> "wix\License.rtf"
+    echo 1. LICENSE GRANT: You are granted a non-exclusive license to use this software.\par\par >> "wix\License.rtf"
+    echo 2. RESTRICTIONS: Do not reverse engineer or decompile the software.\par\par >> "wix\License.rtf"
+    echo 3. NO WARRANTY: THE SOFTWARE IS PROVIDED "AS IS" WITHOUT ANY WARRANTY.\par\par >> "wix\License.rtf"
+    echo 4. NO LIABILITY: THE AUTHORS ARE NOT LIABLE FOR ANY DAMAGES FROM USING THIS SOFTWARE.\par >> "wix\License.rtf"
+    echo } >> "wix\License.rtf"
+)
+
+echo EULA content:
+type "wix\License.rtf"
+
 REM Create a WiX file with EULA embedded directly in it
 echo ^<?xml version="1.0" encoding="UTF-8"?^> > wix\product.wxs
 echo ^<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"^> >> wix\product.wxs
@@ -24,18 +43,9 @@ echo     ^<Package InstallerVersion="200" Compressed="yes" /^> >> wix\product.wx
 echo     ^<MediaTemplate EmbedCab="yes" /^> >> wix\product.wxs
 echo     ^<Icon Id="AppIcon.ico" SourceFile="%OUTPUT_DIR%\%APP_NAME%.exe" /^> >> wix\product.wxs
 echo     ^<Property Id="ARPPRODUCTICON" Value="AppIcon.ico" /^> >> wix\product.wxs
-echo     ^<UI^> >> wix\product.wxs
-echo       ^<UIRef Id="WixUI_InstallDir" /^> >> wix\product.wxs
-echo       ^<Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="LicenseAgreementDlg" Order="2"^>1^</Publish^> >> wix\product.wxs
-echo       ^<Publish Dialog="LicenseAgreementDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="2"^>1^</Publish^> >> wix\product.wxs
-echo     ^</UI^> >> wix\product.wxs
-
-REM Create a custom license agreement directly in the XML
-echo     ^<UIRef Id="WixUI_Common" /^> >> wix\product.wxs
 echo     ^<Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" /^> >> wix\product.wxs
-echo     ^<Binary Id="CustomEulaRtf" SourceFile="%~dp0customEula.rtf" /^> >> wix\product.wxs
-echo     ^<WixVariable Id="WixUILicenseRtf" Value="%~dp0customEula.rtf" /^> >> wix\product.wxs
-
+echo     ^<UIRef Id="WixUI_InstallDir" /^> >> wix\product.wxs
+echo     ^<WixVariable Id="WixUILicenseRtf" Value="wix\License.rtf" /^> >> wix\product.wxs
 echo     ^<Feature Id="ProductFeature" Title="EdgeNodeLauncher" Level="1"^> >> wix\product.wxs
 echo       ^<ComponentRef Id="ApplicationComponent" /^> >> wix\product.wxs
 echo       ^<ComponentRef Id="DesktopShortcutComponent" /^> >> wix\product.wxs
@@ -64,20 +74,9 @@ echo     ^</Directory^> >> wix\product.wxs
 echo   ^</Product^> >> wix\product.wxs
 echo ^</Wix^> >> wix\product.wxs
 
-REM Create the extreme simple EULA RTF file
-echo Creating extremely simple EULA RTF file...
-echo {\rtf1\ansi\deff0{\fonttbl{\f0\froman\fprq2\fcharset0 Times New Roman;}}\viewkind4\uc1\pard\lang1033\f0\fs20 > "%~dp0customEula.rtf"
-echo END USER LICENSE AGREEMENT FOR EDGENODELAUNCHER\par\par >> "%~dp0customEula.rtf"
-echo IMPORTANT: PLEASE READ THIS AGREEMENT CAREFULLY BEFORE INSTALLING.\par\par >> "%~dp0customEula.rtf"
-echo By installing or using the EdgeNodeLauncher, you agree to be bound by this Agreement.\par\par >> "%~dp0customEula.rtf"
-echo 1. LICENSE GRANT: You are granted a non-exclusive license to use this software.\par\par >> "%~dp0customEula.rtf"
-echo 2. RESTRICTIONS: Do not reverse engineer or decompile the software.\par\par >> "%~dp0customEula.rtf"
-echo 3. NO WARRANTY: THE SOFTWARE IS PROVIDED "AS IS" WITHOUT ANY WARRANTY.\par\par >> "%~dp0customEula.rtf"
-echo 4. NO LIABILITY: THE AUTHORS ARE NOT LIABLE FOR ANY DAMAGES FROM USING THIS SOFTWARE.\par >> "%~dp0customEula.rtf"
-echo } >> "%~dp0customEula.rtf"
-
-echo EULA content:
-type "%~dp0customEula.rtf"
+REM Show the contents of the WiX directory to verify EULA is there
+echo Files in WiX directory:
+dir wix
 
 REM Compile WiX source
 echo Compiling WiX source...
