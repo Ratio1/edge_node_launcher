@@ -2252,9 +2252,11 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
     self.add_log(f'Launching container {container_name} with volume {volume_name}...')
     
     try:
-        # Show loading dialog if not already showing one from add_new_node
+        # Show loading dialog if not already showing one from add_new_node or toggle_container
         startup_dialog_visible = hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible()
-        if not startup_dialog_visible:
+        launcher_dialog_visible = hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None and self.launcher_dialog.isVisible()
+        
+        if not startup_dialog_visible and not launcher_dialog_visible:
             # Get node alias from config if available
             container_config = self.config_manager.get_container(container_name)
             node_alias = None
@@ -2278,14 +2280,29 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
             # Add a small delay to ensure dialog is fully rendered
             QTimer.singleShot(100, lambda: self._perform_container_launch(container_name, volume_name))
         else:
-            # If we already have a startup dialog visible, just perform the launch
+            # If we already have a dialog visible, just perform the launch
+            # If launcher_dialog is visible, update its progress message
+            if launcher_dialog_visible:
+                self.launcher_dialog.update_progress("Launching Docker container...")
+            # If startup_dialog is visible, update its progress message
+            elif startup_dialog_visible:
+                self.startup_dialog.update_progress("Launching Docker container...")
+                
+            # Perform the launch operation
             self._perform_container_launch(container_name, volume_name)
             
     except Exception as e:
         # Stop loading indicator in case of error
         self.loading_indicator.stop()
         
-        # Close the loading dialog if we created one in this method
+        # Close the startup dialog if it exists
+        startup_dialog_visible = hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible()
+        if startup_dialog_visible:
+            self.startup_dialog.safe_close()
+            # Schedule removal of the reference after a delay
+            QTimer.singleShot(500, lambda: setattr(self, 'startup_dialog', None) if hasattr(self, 'startup_dialog') else None)
+            
+        # Close the launcher dialog if it exists
         launcher_dialog_visible = hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None and self.launcher_dialog.isVisible()
         if launcher_dialog_visible:
             self.launcher_dialog.safe_close()
@@ -2334,9 +2351,11 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
                 self.toast.show_notification(NotificationType.ERROR, error_msg)
                 return
             
-            # Update loading dialog with progress
+            # Update loading dialogs with progress
             if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None and self.launcher_dialog.isVisible():
                 self.launcher_dialog.update_progress("Container launched, updating configuration...")
+            elif hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible():
+                self.startup_dialog.update_progress("Container launched, updating configuration...")
             
             # Update last used timestamp in config
             from datetime import datetime
@@ -2348,9 +2367,11 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
                 self.config_manager.update_volume(container_name, volume_name)
                 self.add_log(f"Updated volume name in config: {volume_name}", debug=True)
             
-            # Update loading dialog with progress
+            # Update loading dialogs with progress
             if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None and self.launcher_dialog.isVisible():
                 self.launcher_dialog.update_progress("Updating user interface...")
+            elif hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible():
+                self.startup_dialog.update_progress("Updating user interface...")
             
             # Update UI after launch
             self.post_launch_setup()
@@ -2361,16 +2382,24 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
             # Stop loading indicator
             self.loading_indicator.stop()
             
-            # Update loading dialog with completion message
+            # Update loading dialogs with completion message
             if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None and self.launcher_dialog.isVisible():
                 self.launcher_dialog.update_progress("Container launched successfully!")
+            elif hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible():
+                self.startup_dialog.update_progress("Container launched successfully!")
             
-            # Close the loading dialog after a short delay to show success message
+            # Close the loading dialogs after a short delay to show success message
             launcher_dialog_visible = hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None and self.launcher_dialog.isVisible()
             if launcher_dialog_visible:
                 QTimer.singleShot(500, lambda: self.launcher_dialog.safe_close() if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None else None)
                 # Schedule removal of the reference after a delay
                 QTimer.singleShot(1000, lambda: setattr(self, 'launcher_dialog', None) if hasattr(self, 'launcher_dialog') else None)
+            
+            startup_dialog_visible = hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible()
+            if startup_dialog_visible:
+                QTimer.singleShot(500, lambda: self.startup_dialog.safe_close() if hasattr(self, 'startup_dialog') and self.startup_dialog is not None else None)
+                # Schedule removal of the reference after a delay
+                QTimer.singleShot(1000, lambda: setattr(self, 'startup_dialog', None) if hasattr(self, 'startup_dialog') else None)
             
             # Show success notification
             # Get node alias from config if available
@@ -2389,9 +2418,11 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
             
             # Check if this is a "container already exists" error
             if "Conflict" in error_msg and "is already in use" in error_msg:
-                # Update loading dialog with specific error message
+                # Update loading dialogs with specific error message
                 if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None and self.launcher_dialog.isVisible():
                     self.launcher_dialog.update_progress("Container name conflict detected. Trying again with container removal...")
+                elif hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible():
+                    self.startup_dialog.update_progress("Container name conflict detected. Trying again with container removal...")
                 
                 # Try to forcefully remove the container and retry launch
                 try:
@@ -2416,16 +2447,24 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
                 except Exception as retry_err:
                     self.add_log(f"Failed to resolve container conflict: {retry_err}", color="red")
             
-            # Update loading dialog with error message
+            # Update loading dialogs with error message
             if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None and self.launcher_dialog.isVisible():
                 self.launcher_dialog.update_progress(f"Error: {error_msg}")
+            elif hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible():
+                self.startup_dialog.update_progress(f"Error: {error_msg}")
             
-            # Close the loading dialog after a short delay to show error message
+            # Close the loading dialogs after a short delay to show error message
             launcher_dialog_visible = hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None and self.launcher_dialog.isVisible()
             if launcher_dialog_visible:
                 QTimer.singleShot(1500, lambda: self.launcher_dialog.safe_close() if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None else None)
                 # Schedule removal of the reference after a delay
                 QTimer.singleShot(2000, lambda: setattr(self, 'launcher_dialog', None) if hasattr(self, 'launcher_dialog') else None)
+            
+            startup_dialog_visible = hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible()
+            if startup_dialog_visible:
+                QTimer.singleShot(1500, lambda: self.startup_dialog.safe_close() if hasattr(self, 'startup_dialog') and self.startup_dialog is not None else None)
+                # Schedule removal of the reference after a delay
+                QTimer.singleShot(2000, lambda: setattr(self, 'startup_dialog', None) if hasattr(self, 'startup_dialog') else None)
                 
             error_msg = f"Failed to launch container: {error_msg}"
             self.add_log(error_msg, color="red")
@@ -2438,16 +2477,19 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
         # Stop loading indicator on error
         self.loading_indicator.stop()
         
-        # Update loading dialog with error message
-        if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None and self.launcher_dialog.isVisible():
-            self.launcher_dialog.update_progress(f"Error: {str(e)}")
-        
-        # Close the loading dialog after a short delay to show error message
+        # Close the startup dialog if it exists
+        startup_dialog_visible = hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible()
+        if startup_dialog_visible:
+            self.startup_dialog.safe_close()
+            # Schedule removal of the reference after a delay
+            QTimer.singleShot(500, lambda: setattr(self, 'startup_dialog', None) if hasattr(self, 'startup_dialog') else None)
+            
+        # Close the launcher dialog if it exists
         launcher_dialog_visible = hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None and self.launcher_dialog.isVisible()
         if launcher_dialog_visible:
-            QTimer.singleShot(1500, lambda: self.launcher_dialog.safe_close() if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None else None)
+            self.launcher_dialog.safe_close()
             # Schedule removal of the reference after a delay
-            QTimer.singleShot(2000, lambda: setattr(self, 'launcher_dialog', None) if hasattr(self, 'launcher_dialog') else None)
+            QTimer.singleShot(500, lambda: setattr(self, 'launcher_dialog', None) if hasattr(self, 'launcher_dialog') else None)
             
         error_msg = f"Failed to launch container: {str(e)}"
         self.add_log(error_msg, color="red")

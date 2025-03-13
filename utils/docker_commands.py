@@ -731,11 +731,12 @@ class DockerCommandHandler:
                     # Wait a moment to ensure Docker has fully released the name
                     time.sleep(0.5)
                 
-                # Proceed with container launch
-                launch_container()
+                # Return True to indicate the check passed (either no container existed or it was removed)
+                return True
                 
             except Exception as e:
                 error_callback(f"Error checking container existence: {str(e)}")
+                return False
         
         def launch_container():
             # Get the command to run
@@ -755,4 +756,6 @@ class DockerCommandHandler:
             self._execute_direct_threaded(command, on_launch_success, error_callback)
         
         # Start by checking for existing container
-        check_and_remove_existing()
+        if check_and_remove_existing():
+            # Only proceed with launching if the check was successful
+            launch_container()
