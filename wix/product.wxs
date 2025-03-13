@@ -3,8 +3,12 @@
   <Product Id="*" Name="EdgeNodeLauncher" Language="1033" Version="1.0.0.0" Manufacturer="YourCompany" UpgradeCode="61DAB716-7CE9-4F67-BC46-7ADB96FB074A"> 
     <Package InstallerVersion="200" Compressed="yes" /> 
     <MediaTemplate EmbedCab="yes" /> 
+    <Icon Id="AppIcon.ico" SourceFile="dist\EdgeNodeLauncher.exe" /> 
+    <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" /> 
+    <WixVariable Id="WixUILicenseRtf" Value="wix\License.rtf" /> 
     <Feature Id="ProductFeature" Title="EdgeNodeLauncher" Level="1"> 
       <ComponentRef Id="ApplicationComponent" /> 
+      <ComponentRef Id="DesktopShortcutComponent" /> 
     </Feature> 
     <Directory Id="TARGETDIR" Name="SourceDir"> 
       <Directory Id="ProgramFilesFolder"> 
@@ -14,6 +18,20 @@
           </Component> 
         </Directory> 
       </Directory> 
+      <Directory Id="DesktopFolder" Name="Desktop"> 
+        <Component Id="DesktopShortcutComponent" Guid="*"> 
+          <Shortcut Id="DesktopShortcut" 
+                    Name="EdgeNodeLauncher" 
+                    Description="Launch the Edge Node Launcher application" 
+                    Target="[INSTALLDIR]EdgeNodeLauncher.exe" 
+                    WorkingDirectory="INSTALLDIR" 
+                    Icon="AppIcon.ico" /> 
+          <RemoveFolder Id="DesktopFolder" On="uninstall" /> 
+          <RegistryValue Root="HKCU" Key="Software\EdgeNodeLauncher" Name="installed" Type="integer" Value="1" KeyPath="yes" /> 
+        </Component> 
+      </Directory> 
     </Directory> 
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" /> 
+    <UIRef Id="WixUI_InstallDir" /> 
   </Product> 
 </Wix> 
