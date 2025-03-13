@@ -16,53 +16,7 @@ echo Building MSI installer...
 REM Create temporary WiX files directory
 if not exist wix mkdir wix
 
-REM Check if License.rtf already exists in wix directory (created by GitHub Actions)
-if exist "wix\License.rtf" (
-    echo EULA file already exists in wix directory.
-    echo EULA content:
-    type "wix\License.rtf"
-) else (
-    REM Create EULA directly in the wix directory
-    echo Generating EULA file...
-    (
-    echo {\rtf1\ansi\ansicpg1252\deff0\nouicompat\deflang1033{\fonttbl{\f0\fnil\fcharset0 Calibri;}}
-    echo {\*\generator Riched20 10.0.19041}\viewkind4\uc1
-    echo \pard\sa200\sl276\slmult1\f0\fs22\lang9 END USER LICENSE AGREEMENT FOR EDGENODELAUNCHER\par
-    echo \par
-    echo IMPORTANT: PLEASE READ THIS END USER LICENSE AGREEMENT CAREFULLY BEFORE INSTALLING THE EDGENODELAUNCHER APPLICATION.\par
-    echo \par
-    echo By installing or using the EdgeNodeLauncher application, you agree to be bound by the terms of this Agreement. If you do not agree, do not install or use the application.\par
-    echo \par
-    echo 1. LICENSE GRANT\par
-    echo You are granted a non-exclusive license to use the software for personal or business purposes.\par
-    echo \par
-    echo 2. RESTRICTIONS\par
-    echo You may not reverse engineer, decompile, or disassemble the software.\par
-    echo \par
-    echo 3. NO WARRANTY\par
-    echo THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.\par
-    echo \par
-    echo 4. LIMITATION OF LIABILITY\par
-    echo IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY DAMAGES ARISING FROM THE USE OF THIS SOFTWARE.\par
-    echo \par
-    echo 5. GOVERNING LAW\par
-    echo This agreement is governed by the laws of the jurisdiction where the software owner is located.\par
-    echo }
-    ) > "wix\License.rtf"
-
-    REM Verify EULA file was created
-    if not exist "wix\License.rtf" (
-        echo ERROR: Failed to create EULA file.
-        exit /b 1
-    )
-
-    echo EULA file created successfully.
-    echo =============EULA CONTENT:=============
-    type "wix\License.rtf"
-    echo =======================================
-)
-
-REM Create a dead-simple WiX file with minimal features
+REM Create a WiX file with EULA embedded directly in it
 echo ^<?xml version="1.0" encoding="UTF-8"?^> > wix\product.wxs
 echo ^<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"^> >> wix\product.wxs
 echo   ^<Product Id="*" Name="EdgeNodeLauncher" Language="1033" Version="1.0.0.0" Manufacturer="YourCompany" UpgradeCode="61DAB716-7CE9-4F67-BC46-7ADB96FB074A"^> >> wix\product.wxs
@@ -70,7 +24,18 @@ echo     ^<Package InstallerVersion="200" Compressed="yes" /^> >> wix\product.wx
 echo     ^<MediaTemplate EmbedCab="yes" /^> >> wix\product.wxs
 echo     ^<Icon Id="AppIcon.ico" SourceFile="%OUTPUT_DIR%\%APP_NAME%.exe" /^> >> wix\product.wxs
 echo     ^<Property Id="ARPPRODUCTICON" Value="AppIcon.ico" /^> >> wix\product.wxs
-echo     ^<WixVariable Id="WixUILicenseRtf" Value="wix\License.rtf" /^> >> wix\product.wxs
+echo     ^<UI^> >> wix\product.wxs
+echo       ^<UIRef Id="WixUI_InstallDir" /^> >> wix\product.wxs
+echo       ^<Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="LicenseAgreementDlg" Order="2"^>1^</Publish^> >> wix\product.wxs
+echo       ^<Publish Dialog="LicenseAgreementDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="2"^>1^</Publish^> >> wix\product.wxs
+echo     ^</UI^> >> wix\product.wxs
+
+REM Create a custom license agreement directly in the XML
+echo     ^<UIRef Id="WixUI_Common" /^> >> wix\product.wxs
+echo     ^<Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" /^> >> wix\product.wxs
+echo     ^<Binary Id="CustomEulaRtf" SourceFile="%~dp0customEula.rtf" /^> >> wix\product.wxs
+echo     ^<WixVariable Id="WixUILicenseRtf" Value="%~dp0customEula.rtf" /^> >> wix\product.wxs
+
 echo     ^<Feature Id="ProductFeature" Title="EdgeNodeLauncher" Level="1"^> >> wix\product.wxs
 echo       ^<ComponentRef Id="ApplicationComponent" /^> >> wix\product.wxs
 echo       ^<ComponentRef Id="DesktopShortcutComponent" /^> >> wix\product.wxs
@@ -96,14 +61,23 @@ echo           ^<RegistryValue Root="HKCU" Key="Software\EdgeNodeLauncher" Name=
 echo         ^</Component^> >> wix\product.wxs
 echo       ^</Directory^> >> wix\product.wxs
 echo     ^</Directory^> >> wix\product.wxs
-echo     ^<Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" /^> >> wix\product.wxs
-echo     ^<UIRef Id="WixUI_InstallDir" /^> >> wix\product.wxs
 echo   ^</Product^> >> wix\product.wxs
 echo ^</Wix^> >> wix\product.wxs
 
-REM Show the contents of the WiX directory to verify EULA is there
-echo Files in WiX directory:
-dir wix
+REM Create the extreme simple EULA RTF file
+echo Creating extremely simple EULA RTF file...
+echo {\rtf1\ansi\deff0{\fonttbl{\f0\froman\fprq2\fcharset0 Times New Roman;}}\viewkind4\uc1\pard\lang1033\f0\fs20 > "%~dp0customEula.rtf"
+echo END USER LICENSE AGREEMENT FOR EDGENODELAUNCHER\par\par >> "%~dp0customEula.rtf"
+echo IMPORTANT: PLEASE READ THIS AGREEMENT CAREFULLY BEFORE INSTALLING.\par\par >> "%~dp0customEula.rtf"
+echo By installing or using the EdgeNodeLauncher, you agree to be bound by this Agreement.\par\par >> "%~dp0customEula.rtf"
+echo 1. LICENSE GRANT: You are granted a non-exclusive license to use this software.\par\par >> "%~dp0customEula.rtf"
+echo 2. RESTRICTIONS: Do not reverse engineer or decompile the software.\par\par >> "%~dp0customEula.rtf"
+echo 3. NO WARRANTY: THE SOFTWARE IS PROVIDED "AS IS" WITHOUT ANY WARRANTY.\par\par >> "%~dp0customEula.rtf"
+echo 4. NO LIABILITY: THE AUTHORS ARE NOT LIABLE FOR ANY DAMAGES FROM USING THIS SOFTWARE.\par >> "%~dp0customEula.rtf"
+echo } >> "%~dp0customEula.rtf"
+
+echo EULA content:
+type "%~dp0customEula.rtf"
 
 REM Compile WiX source
 echo Compiling WiX source...

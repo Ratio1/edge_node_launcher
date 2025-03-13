@@ -113,40 +113,24 @@ jobs:
           draft: false
           makeLatest: true
           
-      # Create EULA file for Windows build
-      - name: Create EULA file for Windows build
+      # Create super-simple EULA RTF file for Windows build
+      - name: Create EULA RTF file for Windows build
         if: runner.os == 'Windows'
         shell: cmd
         run: |
-          mkdir -p wix
-          echo Creating EULA file...
-          echo {\rtf1\ansi\ansicpg1252\deff0\nouicompat\deflang1033{\fonttbl{\f0\fnil\fcharset0 Calibri;}} > wix\License.rtf
-          echo {\*\generator Riched20 10.0.19041}\viewkind4\uc1 >> wix\License.rtf
-          echo \pard\sa200\sl276\slmult1\f0\fs22\lang9 END USER LICENSE AGREEMENT FOR EDGENODELAUNCHER\par >> wix\License.rtf
-          echo \par >> wix\License.rtf
-          echo IMPORTANT: PLEASE READ THIS END USER LICENSE AGREEMENT CAREFULLY BEFORE INSTALLING THE EDGENODELAUNCHER APPLICATION.\par >> wix\License.rtf
-          echo \par >> wix\License.rtf
-          echo By installing or using the EdgeNodeLauncher application, you agree to be bound by the terms of this Agreement. If you do not agree, do not install or use the application.\par >> wix\License.rtf
-          echo \par >> wix\License.rtf
-          echo 1. LICENSE GRANT\par >> wix\License.rtf
-          echo You are granted a non-exclusive license to use the software for personal or business purposes.\par >> wix\License.rtf
-          echo \par >> wix\License.rtf
-          echo 2. RESTRICTIONS\par >> wix\License.rtf
-          echo You may not reverse engineer, decompile, or disassemble the software.\par >> wix\License.rtf
-          echo \par >> wix\License.rtf
-          echo 3. NO WARRANTY\par >> wix\License.rtf
-          echo THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.\par >> wix\License.rtf
-          echo \par >> wix\License.rtf
-          echo 4. LIMITATION OF LIABILITY\par >> wix\License.rtf
-          echo IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY DAMAGES ARISING FROM THE USE OF THIS SOFTWARE.\par >> wix\License.rtf
-          echo \par >> wix\License.rtf
-          echo 5. GOVERNING LAW\par >> wix\License.rtf
-          echo This agreement is governed by the laws of the jurisdiction where the software owner is located.\par >> wix\License.rtf
-          echo } >> wix\License.rtf
-          echo EULA file created successfully.
-          type wix\License.rtf
-          echo Saving EULA file to build_scripts directory...
-          copy wix\License.rtf build_scripts\EULA.rtf
+          echo Creating extremely simple EULA RTF file...
+          echo {\rtf1\ansi\deff0{\fonttbl{\f0\froman\fprq2\fcharset0 Times New Roman;}}\viewkind4\uc1\pard\lang1033\f0\fs20 > "build_scripts\customEula.rtf"
+          echo END USER LICENSE AGREEMENT FOR EDGENODELAUNCHER\par\par >> "build_scripts\customEula.rtf"
+          echo IMPORTANT: PLEASE READ THIS AGREEMENT CAREFULLY BEFORE INSTALLING.\par\par >> "build_scripts\customEula.rtf"
+          echo By installing or using the EdgeNodeLauncher, you agree to be bound by this Agreement.\par\par >> "build_scripts\customEula.rtf"
+          echo 1. LICENSE GRANT: You are granted a non-exclusive license to use this software.\par\par >> "build_scripts\customEula.rtf"
+          echo 2. RESTRICTIONS: Do not reverse engineer or decompile the software.\par\par >> "build_scripts\customEula.rtf"
+          echo 3. NO WARRANTY: THE SOFTWARE IS PROVIDED "AS IS" WITHOUT ANY WARRANTY.\par\par >> "build_scripts\customEula.rtf"
+          echo 4. NO LIABILITY: THE AUTHORS ARE NOT LIABLE FOR ANY DAMAGES FROM USING THIS SOFTWARE.\par >> "build_scripts\customEula.rtf"
+          echo } >> "build_scripts\customEula.rtf"
+          
+          echo EULA content:
+          type "build_scripts\customEula.rtf"
           
       - run: ${{ matrix.platformDependencies }}
       - name: Setup env
