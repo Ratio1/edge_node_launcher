@@ -281,6 +281,24 @@ jobs:
           repo_name: ${{ github.repository }}
           overwrite: true
 
+
+      - name: Zip App
+        run: ${{ matrix.zip }}
+      - name: Save zip File as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}-v${{ env.VERSION }}
+          path: ./${{ matrix.name }}.zip
+          overwrite: true
+
+      - name: Save zip File as artifact on EdgeNodeLauncherRelease
+        uses: svenstaro/upload-release-action@master
+        with:
+          file: ./${{ matrix.name }}.zip
+          asset_name: ${{ matrix.name }}-v${{ env.VERSION }}.zip
+          repo_name: ${{ github.repository }}
+          overwrite: true
+
   create-release:
     runs-on: ubuntu-latest
     needs: build
@@ -291,9 +309,14 @@ jobs:
       - name: Retrieve version
         id: retrieve_version
         run: |
-          VERSION=$(cat ver.py | grep -o "'.*'" | tr -d "'")
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          
+          echo "VERSION=$(cat ver.py | grep -o "'.*'")" >> $GITHUB_OUTPUT
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*-v*
+          path: release
+          merge-multiple: true
+
       - run: ls release
 
       - uses: ncipollo/release-action@v1
