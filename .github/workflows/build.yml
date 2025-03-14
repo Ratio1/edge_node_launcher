@@ -158,45 +158,45 @@ jobs:
           rm dist/EdgeNodeLauncher.exe
           mv signed/EdgeNodeLauncher.exe dist/EdgeNodeLauncher.exe
 
-      - name: Create msi
-        if: runner.os == 'Windows'
-        run: |
-          echo Checking EULA file exists:
-          dir build_scripts
-          echo EULA content:
-          type wix\License.rtf
-          echo "====="
-          echo Running MSI build script...
-          ./build_scripts/build_msi.bat
+#      - name: Create msi
+#        if: runner.os == 'Windows'
+#        run: |
+#          echo Checking EULA file exists:
+#          dir build_scripts
+#          echo EULA content:
+#          type wix\License.rtf
+#          echo "====="
+#          echo Running MSI build script...
+#          ./build_scripts/build_msi.bat
 
-      - name: Sign the msi installer
-        if: runner.os == 'Windows'
-        uses: sslcom/esigner-codesign@develop
-        with:
-          # Sign and timestamp code object.
-          command: sign
-          # SSL.com account username
-          username: ${{ secrets.SSL_USERNAME }}
-          # SSL.com account password.
-          password: ${{ secrets.SSL_PASSWORD }}
-          # Credential ID for signing certificate.
-          credential_id: ${{ secrets.SSL_CREDENTIAL_ID }}
-          # OAuth TOTP Secret (https://www.ssl.com/how-to/automate-esigner-ev-code-signing)
-          totp_secret: ${{ secrets.SSL_TOTP_SECRET }}
-          # Path of code object to be signed. (DLL, JAR, EXE, MSI files vb... )
-          file_path: ${{ github.workspace }}/dist/EdgeNodeLauncher.msi
-          # Directory where signed code object(s) will be written.
-          output_path: ${{ github.workspace }}/signed
-          # Scan code before sign
-          malware_block: true
-          # Environment Name, For Production 'PROD' or For Staging 'TEST'
-          environment_name: PROD
+#      - name: Sign the msi installer
+#        if: runner.os == 'Windows'
+#        uses: sslcom/esigner-codesign@develop
+#        with:
+#          # Sign and timestamp code object.
+#          command: sign
+#          # SSL.com account username
+#          username: ${{ secrets.SSL_USERNAME }}
+#          # SSL.com account password.
+#          password: ${{ secrets.SSL_PASSWORD }}
+#          # Credential ID for signing certificate.
+#          credential_id: ${{ secrets.SSL_CREDENTIAL_ID }}
+#          # OAuth TOTP Secret (https://www.ssl.com/how-to/automate-esigner-ev-code-signing)
+#          totp_secret: ${{ secrets.SSL_TOTP_SECRET }}
+#          # Path of code object to be signed. (DLL, JAR, EXE, MSI files vb... )
+#          file_path: ${{ github.workspace }}/dist/EdgeNodeLauncher.msi
+#          # Directory where signed code object(s) will be written.
+#          output_path: ${{ github.workspace }}/signed
+#          # Scan code before sign
+#          malware_block: true
+#          # Environment Name, For Production 'PROD' or For Staging 'TEST'
+#          environment_name: PROD
 
-      - name: Replace non-signed version with signed one
-        if: runner.os == 'Windows'
-        run: |
-          rm dist/EdgeNodeLauncher.msi
-          mv signed/EdgeNodeLauncher.msi dist/EdgeNodeLauncher.msi
+#      - name: Replace non-signed version with signed one
+#        if: runner.os == 'Windows'
+#        run: |
+#          rm dist/EdgeNodeLauncher.msi
+#          mv signed/EdgeNodeLauncher.msi dist/EdgeNodeLauncher.msi
 
       # Upload Windows executable
       - name: Upload Windows EXE as artifact
@@ -207,14 +207,14 @@ jobs:
           path: dist/EdgeNodeLauncher.exe
           overwrite: true
 
-      # Upload Windows MSI
-      - name: Upload MSI as artifact
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: EdgeNodeLauncher-MSI-v${{ env.VERSION }}
-          path: dist/EdgeNodeLauncher.msi
-          overwrite: true
+#      # Upload Windows MSI
+#      - name: Upload MSI as artifact
+#        if: runner.os == 'Windows'
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: EdgeNodeLauncher-MSI-v${{ env.VERSION }}
+#          path: dist/EdgeNodeLauncher.msi
+#          overwrite: true
 
       # Upload Linux binary
       - name: Upload Linux binary as artifact
@@ -244,16 +244,16 @@ jobs:
           repo_name: ${{ github.repository }}
           overwrite: true
 
-      # Upload Windows MSI to release
-      - name: Upload MSI to release
-        if: runner.os == 'Windows'
-        uses: svenstaro/upload-release-action@master
-        with:
-          file: dist/EdgeNodeLauncher.msi
-          asset_name: EdgeNodeLauncher-Windows-v${{ env.VERSION }}.msi
-          tag: ${{ env.VERSION }}
-          repo_name: ${{ github.repository }}
-          overwrite: true
+#      # Upload Windows MSI to release
+#      - name: Upload MSI to release
+#        if: runner.os == 'Windows'
+#        uses: svenstaro/upload-release-action@master
+#        with:
+#          file: dist/EdgeNodeLauncher.msi
+#          asset_name: EdgeNodeLauncher-Windows-v${{ env.VERSION }}.msi
+#          tag: ${{ env.VERSION }}
+#          repo_name: ${{ github.repository }}
+#          overwrite: true
 
       # Upload Linux binary to release
       - name: Upload Linux binary to release
