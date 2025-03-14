@@ -63,7 +63,7 @@ jobs:
               chmod +x build_scripts/unix_build.sh
               ./build_scripts/unix_build.sh
             zip: cd dist && zip -r ../EdgeNodeLauncher-LINUX_Ubuntu-24.04.zip *
-            name: LINUX_Ubuntu-24.04
+            name: EdgeNodeLauncher-LINUX_Ubuntu-24.04
             platformDependencies: sudo apt-get update && sudo apt install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
 
           - os: ubuntu-22.04
@@ -71,7 +71,7 @@ jobs:
               chmod +x build_scripts/unix_build.sh
               ./build_scripts/unix_build.sh
             zip: cd dist && zip -r ../EdgeNodeLauncher-LINUX_Ubuntu-22.04.zip *
-            name: LINUX_Ubuntu-22.04
+            name: EdgeNodeLauncher-LINUX_Ubuntu-22.04
             platformDependencies: sudo apt-get update && sudo apt install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
 
           - os: ubuntu-20.04
@@ -79,13 +79,14 @@ jobs:
               chmod +x build_scripts/unix_build.sh
               ./build_scripts/unix_build.sh
             zip: cd dist && zip -r ../EdgeNodeLauncher-LINUX_Ubuntu-20.04.zip *
-            name: LINUX_Ubuntu-20.04
+            name: EdgeNodeLauncher-LINUX_Ubuntu-20.04
             platformDependencies: sudo apt-get update && sudo apt-get install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
 
           - os: macos-latest
             build: |
               chmod +x build_scripts/unix_build.sh
               ./build_scripts/unix_build.sh
+            zip: cd dist && zip -r ../EdgeNodeLauncher-OSX-arm64.zip *
             name: EdgeNodeLauncher-OSX-arm64
 
     name: Build installers ${{ matrix.os }}
@@ -105,26 +106,6 @@ jobs:
           VERSION=$(cat ver.py | grep -o "'.*'" | tr -d "'")
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-      
-      # Create release
-      - name: Create Release
-        id: create_release
-        uses: ncipollo/release-action@v1
-        with:
-          name: Version ${{ env.VERSION }}
-          tag: ${{ env.VERSION }}
-          allowUpdates: true
-          draft: false
-          makeLatest: true
-          
-#      # Prepare for Windows build
-#      - name: Prepare for Windows build
-#        if: runner.os == 'Windows'
-#        shell: cmd
-#        run: |
-#          mkdir -p wix
-#          echo Wix directory created for self-contained license handling
-#
       - run: ${{ matrix.platformDependencies }}
       - name: Setup env
         run: |
@@ -162,132 +143,12 @@ jobs:
           rm dist/EdgeNodeLauncher.exe
           mv signed/EdgeNodeLauncher.exe dist/EdgeNodeLauncher.exe
 
-#      - name: Create msi
-#        if: runner.os == 'Windows'
-#        run: |
-#          echo Checking EULA file exists:
-#          dir build_scripts
-#          echo EULA content:
-#          type wix\License.rtf
-#          echo "====="
-#          echo Running MSI build script...
-#          ./build_scripts/build_msi.bat
-
-#      - name: Sign the msi installer
-#        if: runner.os == 'Windows'
-#        uses: sslcom/esigner-codesign@develop
-#        with:
-#          # Sign and timestamp code object.
-#          command: sign
-#          # SSL.com account username
-#          username: ${{ secrets.SSL_USERNAME }}
-#          # SSL.com account password.
-#          password: ${{ secrets.SSL_PASSWORD }}
-#          # Credential ID for signing certificate.
-#          credential_id: ${{ secrets.SSL_CREDENTIAL_ID }}
-#          # OAuth TOTP Secret (https://www.ssl.com/how-to/automate-esigner-ev-code-signing)
-#          totp_secret: ${{ secrets.SSL_TOTP_SECRET }}
-#          # Path of code object to be signed. (DLL, JAR, EXE, MSI files vb... )
-#          file_path: ${{ github.workspace }}/dist/EdgeNodeLauncher.msi
-#          # Directory where signed code object(s) will be written.
-#          output_path: ${{ github.workspace }}/signed
-#          # Scan code before sign
-#          malware_block: true
-#          # Environment Name, For Production 'PROD' or For Staging 'TEST'
-#          environment_name: PROD
-
-#      - name: Replace non-signed version with signed one
-#        if: runner.os == 'Windows'
-#        run: |
-#          rm dist/EdgeNodeLauncher.msi
-#          mv signed/EdgeNodeLauncher.msi dist/EdgeNodeLauncher.msi
-
-      # Upload Windows executable
-      - name: Upload Windows EXE as artifact
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: EdgeNodeLauncher-EXE-v${{ env.VERSION }}
-          path: dist/EdgeNodeLauncher.exe
-          overwrite: true
-
-#      # Upload Windows MSI
-#      - name: Upload MSI as artifact
-#        if: runner.os == 'Windows'
-#        uses: actions/upload-artifact@v4
-#        with:
-#          name: EdgeNodeLauncher-MSI-v${{ env.VERSION }}
-#          path: dist/EdgeNodeLauncher.msi
-#          overwrite: true
-
-      # Upload Linux binary
-      - name: Upload Linux binary as artifact
-        if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v4
-        with:
-          name: EdgeNodeLauncher-${{ matrix.name }}-v${{ env.VERSION }}
-          path: dist/EdgeNodeLauncher
-          overwrite: true
-
-      # For macOS, zip the .app directory first
-      - name: Zip macOS App
-        if: runner.os == 'macOS'
-        run: |
-          cd dist
-          zip -r EdgeNodeLauncher-v${{ env.VERSION }}-macOS.zip EdgeNodeLauncher.app
-          cd ..
-
-      # Upload Windows EXE to release
-      - name: Upload Windows EXE to release
-        if: runner.os == 'Windows'
-        uses: svenstaro/upload-release-action@master
-        with:
-          file: dist/EdgeNodeLauncher.exe
-          asset_name: EdgeNodeLauncher-Windows-v${{ env.VERSION }}.exe
-          tag: ${{ env.VERSION }}
-          repo_name: ${{ github.repository }}
-          overwrite: true
-
-#      # Upload Windows MSI to release
-#      - name: Upload MSI to release
-#        if: runner.os == 'Windows'
-#        uses: svenstaro/upload-release-action@master
-#        with:
-#          file: dist/EdgeNodeLauncher.msi
-#          asset_name: EdgeNodeLauncher-Windows-v${{ env.VERSION }}.msi
-#          tag: ${{ env.VERSION }}
-#          repo_name: ${{ github.repository }}
-#          overwrite: true
-
-      # Upload Linux binary to release
-      - name: Upload Linux binary to release
-        if: runner.os == 'Linux'
-        uses: svenstaro/upload-release-action@master
-        with:
-          file: dist/EdgeNodeLauncher
-          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}
-          tag: ${{ env.VERSION }}
-          repo_name: ${{ github.repository }}
-          overwrite: true
-
-      # Upload macOS app to release
-      - name: Upload macOS app to release
-        if: runner.os == 'macOS'
-        uses: svenstaro/upload-release-action@master
-        with:
-          file: dist/EdgeNodeLauncher-v${{ env.VERSION }}-macOS.zip
-          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-macOS.zip
-          tag: ${{ env.VERSION }}
-          repo_name: ${{ github.repository }}
-          overwrite: true
-
-
       - name: Zip App
         run: ${{ matrix.zip }}
       - name: Save zip File as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.name }}-v${{ env.VERSION }}
+          name: release-${{ matrix.name }}-v${{ env.VERSION }}
           path: ./${{ matrix.name }}.zip
           overwrite: true
 
