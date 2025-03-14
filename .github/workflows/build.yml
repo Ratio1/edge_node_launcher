@@ -54,6 +54,7 @@ jobs:
         include:
           - os: windows-latest
             build: ./build_scripts/win32_build.bat
+            zip: Compress-Archive -Path (Get-ChildItem -Path dist) -DestinationPath EdgeNodeLauncher-WIN32.zip
             name: EdgeNodeLauncher-WIN32
             platformDependencies: ""
 
@@ -61,6 +62,7 @@ jobs:
             build: |
               chmod +x build_scripts/unix_build.sh
               ./build_scripts/unix_build.sh
+            zip: cd dist && zip -r ../EdgeNodeLauncher-LINUX_Ubuntu-24.04.zip *
             name: LINUX_Ubuntu-24.04
             platformDependencies: sudo apt-get update && sudo apt install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
 
@@ -68,6 +70,7 @@ jobs:
             build: |
               chmod +x build_scripts/unix_build.sh
               ./build_scripts/unix_build.sh
+            zip: cd dist && zip -r ../EdgeNodeLauncher-LINUX_Ubuntu-22.04.zip *
             name: LINUX_Ubuntu-22.04
             platformDependencies: sudo apt-get update && sudo apt install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
 
@@ -75,6 +78,7 @@ jobs:
             build: |
               chmod +x build_scripts/unix_build.sh
               ./build_scripts/unix_build.sh
+            zip: cd dist && zip -r ../EdgeNodeLauncher-LINUX_Ubuntu-20.04.zip *
             name: LINUX_Ubuntu-20.04
             platformDependencies: sudo apt-get update && sudo apt-get install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
 
@@ -290,8 +294,11 @@ jobs:
           VERSION=$(cat ver.py | grep -o "'.*'" | tr -d "'")
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           
-      # For potential debugging
-      - name: List available artifacts
-        run: |
-          echo "This step only lists artifacts that were made available to download"
-          echo "VERSION: ${{ env.VERSION }}"
+      - run: ls release
+
+      - uses: ncipollo/release-action@v1
+        with:
+          artifacts: release/*.zip
+          name: Version ${{ steps.retrieve_version.outputs.version }}
+          allowUpdates: true
+          tag: ${{ steps.retrieve_version.outputs.version }}
