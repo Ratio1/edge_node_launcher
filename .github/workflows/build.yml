@@ -377,6 +377,18 @@ jobs:
           repo_name: ${{ github.repository }}
           overwrite: true
 
+      # Upload Linux AppImage to release
+      - name: Upload Linux AppImage to release
+        if: runner.os == 'Linux'
+        uses: svenstaro/upload-release-action@master
+        with:
+          file_glob: true
+          file: dist/EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.*Image
+          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.AppImage
+          tag: ${{ env.VERSION }}
+          repo_name: ${{ github.repository }}
+          overwrite: true
+
       # Upload Linux tarball to release (fallback if AppImage fails)
       - name: Upload Linux tarball to release
         if: runner.os == 'Linux'
@@ -384,17 +396,6 @@ jobs:
         with:
           file: dist/EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.tar.gz
           asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.tar.gz
-          tag: ${{ env.VERSION }}
-          repo_name: ${{ github.repository }}
-          overwrite: true
-
-      # Upload Linux zipped files to release
-      - name: Upload Linux zipped files to release
-        if: runner.os == 'Linux'
-        uses: svenstaro/upload-release-action@master
-        with:
-          file: dist/EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip
-          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip
           tag: ${{ env.VERSION }}
           repo_name: ${{ github.repository }}
           overwrite: true
