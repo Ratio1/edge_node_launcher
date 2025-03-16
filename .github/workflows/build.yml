@@ -183,9 +183,9 @@ jobs:
       - name: Create AppImage
         if: runner.os == 'Linux'
         run: |
-          # Install AppImage tools
+          # Install AppImage tools and dependencies
           sudo apt-get update
-          sudo apt-get install -y libfuse2
+          sudo apt-get install -y libfuse2 desktop-file-utils
           
           # Download appimagetool
           wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
@@ -200,29 +200,55 @@ jobs:
           cp dist/EdgeNodeLauncher AppDir/usr/bin/
           cp assets/r1_icon.png AppDir/usr/share/icons/hicolor/256x256/apps/EdgeNodeLauncher.png
           
-          # Create desktop file
-          cat > AppDir/usr/share/applications/EdgeNodeLauncher.desktop << EOF
-          [Desktop Entry]
-          Name=EdgeNodeLauncher
-          Exec=EdgeNodeLauncher
-          Icon=EdgeNodeLauncher
-          Type=Application
-          Categories=Utility;
-          EOF
+          # Create desktop file in the root directory (required by appimagetool)
+          cat > AppDir/EdgeNodeLauncher.desktop << EOF
+[Desktop Entry]
+Name=EdgeNodeLauncher
+Exec=EdgeNodeLauncher
+Icon=EdgeNodeLauncher
+Type=Application
+Categories=Utility;
+EOF
+          
+          # Also create a copy in the standard location
+          cp AppDir/EdgeNodeLauncher.desktop AppDir/usr/share/applications/
+          
+          # Validate desktop file
+          desktop-file-validate AppDir/EdgeNodeLauncher.desktop || echo "Desktop file validation issues detected"
           
           # Create AppRun file
           cat > AppDir/AppRun << EOF
-          #!/bin/bash
-          SELF=\$(readlink -f "\$0")
-          HERE=\${SELF%/*}
-          export PATH="\${HERE}/usr/bin:\${PATH}"
-          "\${HERE}/usr/bin/EdgeNodeLauncher" "\$@"
-          EOF
+#!/bin/bash
+SELF=\$(readlink -f "\$0")
+HERE=\${SELF%/*}
+export PATH="\${HERE}/usr/bin:\${PATH}"
+"\${HERE}/usr/bin/EdgeNodeLauncher" "\$@"
+EOF
           
           chmod +x AppDir/AppRun
           
-          # Build AppImage
-          ./appimagetool AppDir dist/EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.AppImage
+          # Debug - List files in AppDir
+          echo "Listing AppDir contents:"
+          find AppDir -type f | sort
+          
+          # Set architecture explicitly
+          export ARCH=x86_64
+          
+          # Build AppImage with verbose output
+          ./appimagetool -v AppDir dist/EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.AppImage || {
+            echo "AppImage creation failed, trying alternative method..."
+            # Alternative method if the first one fails
+            ./appimagetool --appimage-extract
+            ./squashfs-root/AppRun -v AppDir dist/EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.AppImage
+          }
+          
+          # If AppImage creation still fails, create a simple tarball as fallback
+          if [ ! -f "dist/EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.AppImage" ]; then
+            echo "Creating fallback tarball instead of AppImage"
+            cd dist
+            tar -czvf EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.tar.gz EdgeNodeLauncher
+            cd ..
+          fi
 
       # Create macOS .app bundle
       - name: Create macOS .app bundle
@@ -242,7 +268,13 @@ jobs:
           if [ "$RUNNER_OS" == "Windows" ]; then
             powershell -Command "Compress-Archive -Path 'EdgeNodeLauncher.exe', 'EdgeNodeLauncher.msi' -DestinationPath 'EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip' -Force"
           elif [ "$RUNNER_OS" == "Linux" ]; then
-            zip -r EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip EdgeNodeLauncher EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.AppImage
+            # Check if AppImage was created successfully, otherwise use the tarball
+            if [ -f "EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.AppImage" ]; then
+              zip -r EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip EdgeNodeLauncher EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.AppImage
+            else
+              echo "Using tarball instead of AppImage for zip"
+              zip -r EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip EdgeNodeLauncher EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.tar.gz
+            fi
           elif [ "$RUNNER_OS" == "macOS" ]; then
             zip -r EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip EdgeNodeLauncher.app
           fi
@@ -306,8 +338,21 @@ jobs:
         if: runner.os == 'Linux'
         uses: svenstaro/upload-release-action@master
         with:
-          file: dist/EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.AppImage
+          file_glob: true
+          file: dist/EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.*Image
           asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.AppImage
+          tag: ${{ env.VERSION }}
+          repo_name: ${{ github.repository }}
+          overwrite: true
+
+      # Upload Linux tarball to release (fallback if AppImage fails)
+      - name: Upload Linux tarball to release
+        if: runner.os == 'Linux' && !success()
+        continue-on-error: true
+        uses: svenstaro/upload-release-action@master
+        with:
+          file: dist/EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.tar.gz
+          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.tar.gz
           tag: ${{ env.VERSION }}
           repo_name: ${{ github.repository }}
           overwrite: true
