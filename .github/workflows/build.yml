@@ -190,9 +190,6 @@ jobs:
           # Create tarball as a fallback option first (in case AppImage fails)
           echo "Creating tarball as fallback option"
           mkdir -p dist
-          cd dist
-          tar -czvf EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.tar.gz EdgeNodeLauncher
-          cd ..
           
           # Download appimagetool
           wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
@@ -360,17 +357,6 @@ jobs:
           file_glob: true
           file: dist/EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.*Image
           asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.AppImage
-          tag: ${{ env.VERSION }}
-          repo_name: ${{ github.repository }}
-          overwrite: true
-
-      # Upload Linux tarball to release (fallback if AppImage fails)
-      - name: Upload Linux tarball to release
-        if: runner.os == 'Linux'
-        uses: svenstaro/upload-release-action@master
-        with:
-          file: dist/EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.tar.gz
-          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.tar.gz
           tag: ${{ env.VERSION }}
           repo_name: ${{ github.repository }}
           overwrite: true
