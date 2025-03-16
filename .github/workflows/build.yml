@@ -266,23 +266,35 @@ jobs:
           ditto -c -k --keepParent EdgeNodeLauncher.app EdgeNodeLauncher-v${{ env.VERSION }}-macOS.app.zip
           cd ..
 
-      # Create zip files for all platforms
-      - name: Zip apps
+      # Create zip files for Windows
+      - name: Zip apps for Windows
+        if: runner.os == 'Windows'
+        shell: powershell
         run: |
           cd dist
-          if [ "$RUNNER_OS" == "Windows" ]; then
-            powershell -Command "Compress-Archive -Path 'EdgeNodeLauncher.exe', 'EdgeNodeLauncher.msi' -DestinationPath 'EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip' -Force"
-          elif [ "$RUNNER_OS" == "Linux" ]; then
-            # Check if AppImage was created successfully, otherwise use the tarball
-            if [ -f "EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.AppImage" ]; then
-              zip -r EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip EdgeNodeLauncher EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.AppImage
-            else
-              echo "Using tarball instead of AppImage for zip"
-              zip -r EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip EdgeNodeLauncher EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.tar.gz
-            fi
-          elif [ "$RUNNER_OS" == "macOS" ]; then
-            zip -r EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip EdgeNodeLauncher.app
+          Compress-Archive -Path 'EdgeNodeLauncher.exe', 'EdgeNodeLauncher.msi' -DestinationPath "EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip" -Force
+          cd ..
+
+      # Create zip files for Linux
+      - name: Zip apps for Linux
+        if: runner.os == 'Linux'
+        run: |
+          cd dist
+          # Check if AppImage was created successfully, otherwise use the tarball
+          if [ -f "EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.AppImage" ]; then
+            zip -r EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip EdgeNodeLauncher EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.AppImage
+          else
+            echo "Using tarball instead of AppImage for zip"
+            zip -r EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip EdgeNodeLauncher EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.tar.gz
           fi
+          cd ..
+          
+      # Create zip files for macOS
+      - name: Zip apps for macOS
+        if: runner.os == 'macOS'
+        run: |
+          cd dist
+          zip -r EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip EdgeNodeLauncher.app
           cd ..
 
       # Upload artifacts
