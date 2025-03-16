@@ -280,20 +280,6 @@ jobs:
           Compress-Archive -Path 'EdgeNodeLauncher.exe', 'EdgeNodeLauncher.msi' -DestinationPath "EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip" -Force
           cd ..
 
-      # Create zip files for Linux
-      - name: Zip apps for Linux
-        if: runner.os == 'Linux'
-        run: |
-          cd dist
-          # Check if AppImage was created successfully, otherwise use the tarball
-          if [ -f "EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.AppImage" ]; then
-            zip -r EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip EdgeNodeLauncher EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.AppImage
-          else
-            echo "Using tarball instead of AppImage for zip"
-            zip -r EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip EdgeNodeLauncher EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.tar.gz
-          fi
-          cd ..
-          
       # Create zip files for macOS
       - name: Zip apps for macOS
         if: runner.os == 'macOS'
@@ -362,17 +348,6 @@ jobs:
         with:
           file: dist/EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip
           asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip
-          tag: ${{ env.VERSION }}
-          repo_name: ${{ github.repository }}
-          overwrite: true
-
-      # Upload Linux binary to release
-      - name: Upload Linux binary to release
-        if: runner.os == 'Linux'
-        uses: svenstaro/upload-release-action@master
-        with:
-          file: dist/EdgeNodeLauncher
-          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}
           tag: ${{ env.VERSION }}
           repo_name: ${{ github.repository }}
           overwrite: true
