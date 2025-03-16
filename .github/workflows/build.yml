@@ -54,7 +54,7 @@ jobs:
         include:
           - os: windows-latest
             build: ./build_scripts/win32_build.bat
-            name: EdgeNodeLauncher-WIN32
+            name: WIN32
             platformDependencies: ""
 
           - os: ubuntu-24.04
@@ -82,7 +82,7 @@ jobs:
             build: |
               chmod +x build_scripts/unix_build.sh
               ./build_scripts/unix_build.sh
-            name: EdgeNodeLauncher-OSX-arm64
+            name: OSX-arm64
 
     name: Build installers ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -317,7 +317,7 @@ jobs:
         uses: svenstaro/upload-release-action@master
         with:
           file: dist/EdgeNodeLauncher.exe
-          asset_name: EdgeNodeLauncher-Windows-v${{ env.VERSION }}.exe
+          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-Windows.exe
           tag: ${{ env.VERSION }}
           repo_name: ${{ github.repository }}
           overwrite: true
@@ -328,7 +328,7 @@ jobs:
         uses: svenstaro/upload-release-action@master
         with:
           file: dist/EdgeNodeLauncher.msi
-          asset_name: EdgeNodeLauncher-Windows-v${{ env.VERSION }}.msi
+          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-Windows.msi
           tag: ${{ env.VERSION }}
           repo_name: ${{ github.repository }}
           overwrite: true
@@ -339,7 +339,7 @@ jobs:
         uses: svenstaro/upload-release-action@master
         with:
           file: dist/EdgeNodeLauncher-v${{ env.VERSION }}-Windows.exe.zip
-          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-Windows.exe.zip
+          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-Windows_exe.zip
           tag: ${{ env.VERSION }}
           repo_name: ${{ github.repository }}
           overwrite: true
@@ -350,7 +350,7 @@ jobs:
         uses: svenstaro/upload-release-action@master
         with:
           file: dist/EdgeNodeLauncher-v${{ env.VERSION }}-Windows.msi.zip
-          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-Windows.msi.zip
+          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-Windows_msi.zip
           tag: ${{ env.VERSION }}
           repo_name: ${{ github.repository }}
           overwrite: true
