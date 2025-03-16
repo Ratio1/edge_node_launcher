@@ -225,39 +225,36 @@ jobs:
           path: dist/EdgeNodeLauncher
           overwrite: true
 
-      # For macOS, zip the .app directory first
-      - name: Zip macOS App
-        if: runner.os == 'macOS'
+      - name: Zip apps App
         run: |
           cd dist
-          zip -r EdgeNodeLauncher-v${{ env.VERSION }}-macOS.zip EdgeNodeLauncher.app
+          zip -r EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip EdgeNodeLauncher*
           cd ..
 
-      # Upload Windows EXE to release
-      - name: Upload Windows EXE to release
-        if: runner.os == 'Windows'
-        uses: svenstaro/upload-release-action@master
-        with:
-          file: dist/EdgeNodeLauncher.exe
-          asset_name: EdgeNodeLauncher-Windows-v${{ env.VERSION }}.exe
-          tag: ${{ env.VERSION }}
-          repo_name: ${{ github.repository }}
-          overwrite: true
-
-      # Upload Windows MSI to release
-      - name: Upload MSI to release
-        if: runner.os == 'Windows'
-        uses: svenstaro/upload-release-action@master
-        with:
-          file: dist/EdgeNodeLauncher.msi
-          asset_name: EdgeNodeLauncher-Windows-v${{ env.VERSION }}.msi
-          tag: ${{ env.VERSION }}
-          repo_name: ${{ github.repository }}
-          overwrite: true
+#      # Upload Windows EXE to release
+#      - name: Upload Windows EXE to release
+#        if: runner.os == 'Windows'
+#        uses: svenstaro/upload-release-action@master
+#        with:
+#          file: dist/EdgeNodeLauncher.exe
+#          asset_name: EdgeNodeLauncher-Windows-v${{ env.VERSION }}.exe
+#          tag: ${{ env.VERSION }}
+#          repo_name: ${{ github.repository }}
+#          overwrite: true
+#
+#      # Upload Windows MSI to release
+#      - name: Upload MSI to release
+#        if: runner.os == 'Windows'
+#        uses: svenstaro/upload-release-action@master
+#        with:
+#          file: dist/EdgeNodeLauncher.msi
+#          asset_name: EdgeNodeLauncher-Windows-v${{ env.VERSION }}.msi
+#          tag: ${{ env.VERSION }}
+#          repo_name: ${{ github.repository }}
+#          overwrite: true
 
       # Upload Linux binary to release
-      - name: Upload Linux binary to release
-        if: runner.os == 'Linux'
+      - name: Upload binaries to release
         uses: svenstaro/upload-release-action@master
         with:
           file: dist/EdgeNodeLauncher
@@ -266,16 +263,16 @@ jobs:
           repo_name: ${{ github.repository }}
           overwrite: true
 
-      # Upload macOS app to release
-      - name: Upload macOS app to release
-        if: runner.os == 'macOS'
-        uses: svenstaro/upload-release-action@master
-        with:
-          file: dist/EdgeNodeLauncher-v${{ env.VERSION }}-macOS.zip
-          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-macOS.zip
-          tag: ${{ env.VERSION }}
-          repo_name: ${{ github.repository }}
-          overwrite: true
+#      # Upload macOS app to release
+#      - name: Upload macOS app to release
+#        if: runner.os == 'macOS'
+#        uses: svenstaro/upload-release-action@master
+#        with:
+#          file: dist/EdgeNodeLauncher-v${{ env.VERSION }}-macOS.zip
+#          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-macOS.zip
+#          tag: ${{ env.VERSION }}
+#          repo_name: ${{ github.repository }}
+#          overwrite: true
 
   create-release:
     runs-on: ubuntu-latest
