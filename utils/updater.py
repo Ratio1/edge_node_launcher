@@ -7,10 +7,9 @@ import platform
 import subprocess
 from PyQt5.QtWidgets import QMessageBox
 
+from utils.const import GITHUB_API_URL
 from ver import __VER__ as CURRENT_VERSION
 
-
-GITHUB_API_URL = 'https://api.github.com/repos/Ratio1/edge_node_launcher/releases/latest'
 DOWNLOAD_DIR = 'downloads'
 
 class _UpdaterMixin:
