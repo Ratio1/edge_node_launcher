@@ -102,25 +102,6 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
-      # Create release
-      - name: Create Release
-        id: create_release
-        uses: ncipollo/release-action@v1
-        with:
-          name: Version ${{ env.VERSION }}
-          tag: ${{ env.VERSION }}
-          allowUpdates: true
-          draft: false
-          makeLatest: true
-
-#      # Prepare for Windows build
-#      - name: Prepare for Windows build
-#        if: runner.os == 'Windows'
-#        shell: cmd
-#        run: |
-#          mkdir -p wix
-#          echo Wix directory created for self-contained license handling
-#
       - run: ${{ matrix.platformDependencies }}
       - name: Setup env
         run: |
@@ -198,63 +179,120 @@ jobs:
           rm dist/EdgeNodeLauncher.msi
           mv signed/EdgeNodeLauncher.msi dist/EdgeNodeLauncher.msi
 
-      # Upload Windows executable
-      - name: Upload Windows EXE as artifact
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: EdgeNodeLauncher-EXE-v${{ env.VERSION }}
-          path: dist/EdgeNodeLauncher.exe
-          overwrite: true
-
-      # Upload Windows MSI
-      - name: Upload MSI as artifact
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: EdgeNodeLauncher-MSI-v${{ env.VERSION }}
-          path: dist/EdgeNodeLauncher.msi
-          overwrite: true
-
-      # Upload Linux binary
-      - name: Upload Linux binary as artifact
+      # Create AppImage for Linux
+      - name: Create AppImage
         if: runner.os == 'Linux'
+        run: |
+          # Install AppImage tools
+          sudo apt-get update
+          sudo apt-get install -y libfuse2
+          
+          # Download appimagetool
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
+          chmod +x appimagetool
+          
+          # Create AppDir structure
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/share/applications
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+          
+          # Copy binary and icon
+          cp dist/EdgeNodeLauncher AppDir/usr/bin/
+          cp assets/r1_icon.png AppDir/usr/share/icons/hicolor/256x256/apps/EdgeNodeLauncher.png
+          
+          # Create desktop file
+          cat > AppDir/usr/share/applications/EdgeNodeLauncher.desktop << EOF
+          [Desktop Entry]
+          Name=EdgeNodeLauncher
+          Exec=EdgeNodeLauncher
+          Icon=EdgeNodeLauncher
+          Type=Application
+          Categories=Utility;
+          EOF
+          
+          # Create AppRun file
+          cat > AppDir/AppRun << EOF
+          #!/bin/bash
+          SELF=\$(readlink -f "\$0")
+          HERE=\${SELF%/*}
+          export PATH="\${HERE}/usr/bin:\${PATH}"
+          "\${HERE}/usr/bin/EdgeNodeLauncher" "\$@"
+          EOF
+          
+          chmod +x AppDir/AppRun
+          
+          # Build AppImage
+          ./appimagetool AppDir dist/EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.AppImage
+
+      # Create macOS .app bundle
+      - name: Create macOS .app bundle
+        if: runner.os == 'macOS'
+        run: |
+          # PyInstaller should have created the .app bundle
+          # Just make sure it's properly packaged
+          cd dist
+          # Create a zip of the .app directory
+          ditto -c -k --keepParent EdgeNodeLauncher.app EdgeNodeLauncher-v${{ env.VERSION }}-macOS.app.zip
+          cd ..
+
+      # Create zip files for all platforms
+      - name: Zip apps
+        run: |
+          cd dist
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            powershell -Command "Compress-Archive -Path 'EdgeNodeLauncher.exe', 'EdgeNodeLauncher.msi' -DestinationPath 'EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip' -Force"
+          elif [ "$RUNNER_OS" == "Linux" ]; then
+            zip -r EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip EdgeNodeLauncher EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.AppImage
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+            zip -r EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip EdgeNodeLauncher.app
+          fi
+          cd ..
+
+      # Upload artifacts
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: EdgeNodeLauncher-${{ matrix.name }}-v${{ env.VERSION }}
-          path: dist/EdgeNodeLauncher
+          path: |
+            dist/EdgeNodeLauncher*
           overwrite: true
 
-      - name: Zip apps App
-        run: |
-          cd dist
-          zip -r EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip EdgeNodeLauncher*
-          cd ..
+      # Upload to release - Windows EXE
+      - name: Upload Windows EXE to release
+        if: runner.os == 'Windows'
+        uses: svenstaro/upload-release-action@master
+        with:
+          file: dist/EdgeNodeLauncher.exe
+          asset_name: EdgeNodeLauncher-Windows-v${{ env.VERSION }}.exe
+          tag: ${{ env.VERSION }}
+          repo_name: ${{ github.repository }}
+          overwrite: true
 
-#      # Upload Windows EXE to release
-#      - name: Upload Windows EXE to release
-#        if: runner.os == 'Windows'
-#        uses: svenstaro/upload-release-action@master
-#        with:
-#          file: dist/EdgeNodeLauncher.exe
-#          asset_name: EdgeNodeLauncher-Windows-v${{ env.VERSION }}.exe
-#          tag: ${{ env.VERSION }}
-#          repo_name: ${{ github.repository }}
-#          overwrite: true
-#
-#      # Upload Windows MSI to release
-#      - name: Upload MSI to release
-#        if: runner.os == 'Windows'
-#        uses: svenstaro/upload-release-action@master
-#        with:
-#          file: dist/EdgeNodeLauncher.msi
-#          asset_name: EdgeNodeLauncher-Windows-v${{ env.VERSION }}.msi
-#          tag: ${{ env.VERSION }}
-#          repo_name: ${{ github.repository }}
-#          overwrite: true
+      # Upload Windows MSI to release
+      - name: Upload MSI to release
+        if: runner.os == 'Windows'
+        uses: svenstaro/upload-release-action@master
+        with:
+          file: dist/EdgeNodeLauncher.msi
+          asset_name: EdgeNodeLauncher-Windows-v${{ env.VERSION }}.msi
+          tag: ${{ env.VERSION }}
+          repo_name: ${{ github.repository }}
+          overwrite: true
+
+      # Upload Windows zipped files to release
+      - name: Upload Windows zipped files to release
+        if: runner.os == 'Windows'
+        uses: svenstaro/upload-release-action@master
+        with:
+          file: dist/EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip
+          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip
+          tag: ${{ env.VERSION }}
+          repo_name: ${{ github.repository }}
+          overwrite: true
 
       # Upload Linux binary to release
-      - name: Upload binaries to release
+      - name: Upload Linux binary to release
+        if: runner.os == 'Linux'
         uses: svenstaro/upload-release-action@master
         with:
           file: dist/EdgeNodeLauncher
@@ -263,16 +301,70 @@ jobs:
           repo_name: ${{ github.repository }}
           overwrite: true
 
-#      # Upload macOS app to release
-#      - name: Upload macOS app to release
-#        if: runner.os == 'macOS'
-#        uses: svenstaro/upload-release-action@master
-#        with:
-#          file: dist/EdgeNodeLauncher-v${{ env.VERSION }}-macOS.zip
-#          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-macOS.zip
-#          tag: ${{ env.VERSION }}
-#          repo_name: ${{ github.repository }}
-#          overwrite: true
+      # Upload Linux AppImage to release
+      - name: Upload Linux AppImage to release
+        if: runner.os == 'Linux'
+        uses: svenstaro/upload-release-action@master
+        with:
+          file: dist/EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.AppImage
+          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.AppImage
+          tag: ${{ env.VERSION }}
+          repo_name: ${{ github.repository }}
+          overwrite: true
+
+      # Upload Linux zipped files to release
+      - name: Upload Linux zipped files to release
+        if: runner.os == 'Linux'
+        uses: svenstaro/upload-release-action@master
+        with:
+          file: dist/EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip
+          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip
+          tag: ${{ env.VERSION }}
+          repo_name: ${{ github.repository }}
+          overwrite: true
+
+      # Upload macOS app to release
+      - name: Upload macOS app to release
+        if: runner.os == 'macOS'
+        uses: svenstaro/upload-release-action@master
+        with:
+          file: dist/EdgeNodeLauncher.app
+          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-macOS.app
+          tag: ${{ env.VERSION }}
+          repo_name: ${{ github.repository }}
+          overwrite: true
+
+      # Upload macOS zipped app to release
+      - name: Upload macOS zipped app to release
+        if: runner.os == 'macOS'
+        uses: svenstaro/upload-release-action@master
+        with:
+          file: dist/EdgeNodeLauncher-v${{ env.VERSION }}-macOS.app.zip
+          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-macOS.app.zip
+          tag: ${{ env.VERSION }}
+          repo_name: ${{ github.repository }}
+          overwrite: true
+
+      # Upload macOS zipped files to release
+      - name: Upload macOS zipped files to release
+        if: runner.os == 'macOS'
+        uses: svenstaro/upload-release-action@master
+        with:
+          file: dist/EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip
+          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip
+          tag: ${{ env.VERSION }}
+          repo_name: ${{ github.repository }}
+          overwrite: true
+
+      - name: Create Release
+        id: create_release
+        uses: ncipollo/release-action@v1
+        with:
+          name: Version ${{ env.VERSION }}
+          tag: ${{ env.VERSION }}
+          allowUpdates: true
+          draft: false
+          makeLatest: true
 
   create-release:
     runs-on: ubuntu-latest
