@@ -202,13 +202,13 @@ jobs:
           
           # Create desktop file in the root directory (required by appimagetool)
           cat > AppDir/EdgeNodeLauncher.desktop << EOF
-[Desktop Entry]
-Name=EdgeNodeLauncher
-Exec=EdgeNodeLauncher
-Icon=EdgeNodeLauncher
-Type=Application
-Categories=Utility;
-EOF
+          [Desktop Entry]
+          Name=EdgeNodeLauncher
+          Exec=EdgeNodeLauncher
+          Icon=EdgeNodeLauncher
+          Type=Application
+          Categories=Utility;
+          EOF
           
           # Also create a copy in the standard location
           cp AppDir/EdgeNodeLauncher.desktop AppDir/usr/share/applications/
@@ -218,13 +218,13 @@ EOF
           
           # Create AppRun file
           cat > AppDir/AppRun << EOF
-#!/bin/bash
-SELF=\$(readlink -f "\$0")
-HERE=\${SELF%/*}
-export PATH="\${HERE}/usr/bin:\${PATH}"
-"\${HERE}/usr/bin/EdgeNodeLauncher" "\$@"
-EOF
-          
+          #!/bin/bash
+          SELF=\$(readlink -f "\$0")
+          HERE=\${SELF%/*}
+          export PATH="\${HERE}/usr/bin:\${PATH}"
+          "\${HERE}/usr/bin/EdgeNodeLauncher" "\$@"
+          EOF
+            
           chmod +x AppDir/AppRun
           
           # Debug - List files in AppDir
