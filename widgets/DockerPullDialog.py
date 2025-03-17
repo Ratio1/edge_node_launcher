@@ -225,7 +225,7 @@ class DockerPullDialog(QDialog):
             if layer_id in self.layer_widgets and 'status' in self.layer_widgets[layer_id]:
                 self.layer_widgets[layer_id]['status'].setText(status)
             
-            # Check for progress information
+            # Check for progress information or completion status
             progress_match = re.search(r'(\d+)%', status)
             if progress_match:
                 progress = int(progress_match.group(1))
@@ -240,6 +240,12 @@ class DockerPullDialog(QDialog):
                 # Update progress bar
                 if layer_id in self.layer_widgets:
                     self.layer_widgets[layer_id]['progress'].setValue(progress)
+            elif "Download complete" in status or "Pull complete" in status or "Already exists" in status:
+                # Set to 100% when complete
+                self.layers[layer_id]['progress'] = 100
+                if layer_id in self.layer_widgets:
+                    self.layer_widgets[layer_id]['progress'].setValue(100)
+                logging.info(f"Layer {layer_id} completed: {status}")
             else:
                 # Log status updates without progress percentage
                 logging.info(f"Layer {layer_id} status update: {status}")
@@ -329,11 +335,12 @@ class DockerPullDialog(QDialog):
                     # Update progress bar
                     if line_hash in self.layer_widgets:
                         self.layer_widgets[line_hash]['progress'].setValue(progress)
-            elif "Download complete" in status or "Pull complete" in status:
+            elif "Download complete" in status or "Pull complete" in status or "Already exists" in status:
                 # Set to 100% when complete
                 self.layers[line_hash]['progress'] = 100
                 if line_hash in self.layer_widgets:
                     self.layer_widgets[line_hash]['progress'].setValue(100)
+                logging.info(f"Layer {line_hash} completed: {status}")
             
             # Update overall progress
             self._update_overall_progress()
