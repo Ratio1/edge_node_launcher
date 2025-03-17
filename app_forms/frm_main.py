@@ -848,6 +848,27 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
         # Get the current container name
         container_name = self.docker_handler.container_name
         
+        # Get node alias from config if available for better user feedback
+        node_display_name = container_name
+        container_config = self.config_manager.get_container(container_name)
+        if container_config and container_config.node_alias:
+            node_display_name = container_config.node_alias
+            message = f"Please wait while node '{node_display_name}' is being stopped..."
+        else:
+            message = "Please wait while Edge Node is being stopped..."
+            
+        # Show loading dialog for stopping operation
+        self.toggle_dialog = LoadingDialog(
+            self, 
+            title="Stopping Node", 
+            message=message,
+            size=50
+        )
+        self.toggle_dialog.show()
+        
+        # Update message to indicate starting the stop process
+        self.toggle_dialog.update_progress("Preparing to stop Docker container...")
+        
         # Clear info displays
         self._clear_info_display()
         self.loading_indicator.start()
