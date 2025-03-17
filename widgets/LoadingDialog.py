@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QApplication
 )
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, pyqtSlot
 from PyQt5.QtGui import QColor
 import platform
 from app_forms.frm_utils import LoadingIndicator
@@ -56,98 +56,66 @@ class LoadingDialog(QDialog):
                 background-color: {blue_bg_color};
                 color: {text_color};
                 border: none;
+                border-radius: 8px;
             }}
             QLabel {{
                 color: {text_color};
-                background-color: transparent;
-            }}
-            QDialog::title {{
-                background-color: {blue_bg_color};
+                font-size: 14px;
             }}
         """
         
-        # Add Linux-specific title bar styling if needed
+        # Apply platform-specific styles
         if linux_titlebar_style:
-            self.setStyleSheet(base_style + f"""
-                QDialog::title {{
-                    background-color: {blue_bg_color};
-                }}
-                QDialogButtonBox {{
-                    background-color: {blue_bg_color};
-                }}
-                QDialogButtonBox QPushButton {{
-                    background-color: {blue_bg_color};
-                    color: {text_color};
-                }}
-            """)
-        else:
-            self.setStyleSheet(base_style)
+            # On Linux, add specific styling for the title bar
+            linux_style = """
+                QDialog {
+                    border: 1px solid #0f3b71;
+                }
+            """
+            base_style += linux_style
         
-        # Main layout
+        # Apply the base style and any custom stylesheet
+        self.setStyleSheet(base_style + (stylesheet or ""))
+        
+        # Create layout
         layout = QVBoxLayout()
-        self.setLayout(layout)  # Set layout early so it's available
-        
-        # Loading indicator (green spinner looks good on blue background)
-        self.loading_indicator = LoadingIndicator(size=size)
-        self.loading_indicator.setColor(QColor("lightgreen"))  # Set spinner color for better visibility
-        self.loading_indicator.start()
-        
-        # Labels
-        title_label = QLabel(title)
-        title_label.setStyleSheet(f"font-size: 16px; font-weight: bold; color: {text_color}; padding: 5px;")
-        title_label.setAlignment(Qt.AlignCenter)
-        
-        self.info_label = QLabel(message)
-        self.info_label.setStyleSheet(f"color: {text_color}; font-size: 14px;")
-        self.info_label.setWordWrap(True)
-        self.info_label.setAlignment(Qt.AlignCenter)
-        
-        # Add widgets to layout with some spacing
-        layout.addWidget(title_label)
-        layout.addSpacing(10)
-        layout.addWidget(self.loading_indicator, 0, Qt.AlignCenter)
-        layout.addSpacing(10)
-        layout.addWidget(self.info_label)
-        
-        # Add margin to layout
         layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+        
+        # Create loading indicator
+        self.loading_indicator = LoadingIndicator(size=size)
+        if text_color:
+            self.loading_indicator.setColor(QColor(text_color))
+        
+        # Create message label
+        self.message_label = QLabel(message)
+        self.message_label.setAlignment(Qt.AlignCenter)
+        self.message_label.setWordWrap(True)
+        
+        # Add widgets to layout
+        indicator_layout = QHBoxLayout()
+        indicator_layout.addStretch()
+        indicator_layout.addWidget(self.loading_indicator)
+        indicator_layout.addStretch()
+        
+        layout.addLayout(indicator_layout)
+        layout.addWidget(self.message_label)
+        layout.addStretch()
+        
+        self.setLayout(layout)
+        
+        # Start the loading animation
+        self.loading_indicator.start()
     
+    @pyqtSlot(str)
     def set_message(self, message):
         """Update the dialog message.
         
         Args:
             message: New message to display
         """
-        if hasattr(self, 'info_label'):
-            self.info_label.setText(message)
-            # Process events to ensure UI updates immediately
-            QApplication.processEvents()
-    
-    def update_progress(self, message, process_events=True):
-        """Update the dialog with progress information.
-        
-        Args:
-            message: Progress message to display
-            process_events: Whether to process Qt events after updating
-        """
-        self.set_message(message)
-        if process_events:
-            # Process events to ensure UI remains responsive
-            QApplication.processEvents()
-    
-    def keep_alive(self):
-        """Process events to ensure the dialog remains responsive.
-        
-        This method can be called periodically during long operations
-        to ensure the UI doesn't freeze.
-        """
-        QApplication.processEvents()
-    
-    def showEvent(self, event):
-        """Override show event to ensure dialog is processed and visible."""
-        super().showEvent(event)
-        # Process all pending events to make sure dialog appears immediately
-        QApplication.processEvents()
+        if hasattr(self, 'message_label'):
+            self.message_label.setText(message)
     
     def closeEvent(self, event):
         """Handle the dialog close event.
@@ -162,10 +130,40 @@ class LoadingDialog(QDialog):
         # Safely close without affecting parent widgets
         event.accept()
     
+    @pyqtSlot()
     def safe_close(self):
         """Safely close the dialog with a timer to prevent direct deletion."""
         if hasattr(self, 'loading_indicator'):
             self.loading_indicator.stop()
         
         # Use a short timer to ensure proper context for closing
+        # This must be called from the main thread
         QTimer.singleShot(100, self.close) 
+    
+    @pyqtSlot(str)
+    def update_progress(self, message, process_events=True):
+        """Update the dialog with progress information.
+        
+        Args:
+            message: Progress message to display
+            process_events: Whether to process Qt events after updating
+        """
+        self.set_message(message)
+        if process_events:
+            # Process events to ensure UI remains responsive
+            QApplication.processEvents()
+    
+    @pyqtSlot()
+    def keep_alive(self):
+        """Process events to ensure the dialog remains responsive.
+        
+        This method can be called periodically during long operations
+        to ensure the UI doesn't freeze.
+        """
+        QApplication.processEvents()
+    
+    def showEvent(self, event):
+        """Override show event to ensure dialog is processed and visible."""
+        super().showEvent(event)
+        # Process all pending events to make sure dialog appears immediately
+        QApplication.processEvents()

@@ -8,6 +8,8 @@ from PyQt5.QtCore import QThread, pyqtSignal
 import logging
 import platform
 import time
+import threading
+import inspect
 
 from models.NodeInfo import NodeInfo
 from models.NodeHistory import NodeHistory
@@ -16,7 +18,7 @@ from models.ConfigApp import ConfigApp
 from utils.const import DOCKER_VOLUME_PATH
 
 # Docker configuration
-DOCKER_IMAGE = "ratio1/edge_node:mainnet"
+DOCKER_IMAGE = "ratio1/edge_node:testnet"
 DOCKER_TAG = "latest"
 
 @dataclass
@@ -113,6 +115,9 @@ class DockerCommandThread(QThread):
         self.command = command
         self.input_data = input_data
         self.remote_ssh_command = remote_ssh_command
+        # Store the result to be processed in the main thread
+        self.result_data = None
+        self.error_message = None
 
     def run(self):
         try:
@@ -152,21 +157,20 @@ class DockerCommandThread(QThread):
                         timeout=timeout
                     )
                 if result.returncode != 0:
-                    self.command_error.emit(f"Command failed: {result.stderr}\nCommand: {' '.join(full_command)}\nInput data: {self.input_data}")
+                    self.error_message = f"Command failed: {result.stderr}\nCommand: {' '.join(full_command)}\nInput data: {self.input_data}"
                     return
                 
                 # If command is reset_address or change_alias, process output as plain text
                 if self.command == 'reset_address' or self.command.startswith('change_alias'):
-                    self.command_finished.emit({'message': result.stdout.strip()})
+                    self.result_data = {'message': result.stdout.strip()}
                     return
                 
                 try:
-                    data = json.loads(result.stdout)
-                    self.command_finished.emit(data)
+                    self.result_data = json.loads(result.stdout)
                 except json.JSONDecodeError:
-                    self.command_error.emit(f"Error decoding JSON response. Raw output: {result.stdout}")
+                    self.error_message = f"Error decoding JSON response. Raw output: {result.stdout}"
                 except Exception as e:
-                    self.command_error.emit(f"Error processing response: {str(e)}\nRaw output: {result.stdout}")
+                    self.error_message = f"Error processing response: {str(e)}\nRaw output: {result.stdout}"
             except subprocess.TimeoutExpired as e:
                 error_msg = f"Command timed out after {e.timeout} seconds: {' '.join(full_command)}"
                 print(error_msg)
@@ -174,13 +178,13 @@ class DockerCommandThread(QThread):
                     print(f"  stdout: {e.stdout}")
                 if hasattr(e, 'stderr') and e.stderr:
                     print(f"  stderr: {e.stderr}")
-                self.command_error.emit(error_msg)
+                self.error_message = error_msg
         except Exception as e:
             error_msg = f"Error executing command: {str(e)}\nCommand: {' '.join(full_command) if 'full_command' in locals() else self.command}\nInput data: {self.input_data}"
             print(error_msg)
             import traceback
             traceback.print_exc()
-            self.command_error.emit(error_msg)
+            self.error_message = error_msg
 
 class DockerDirectCommandThread(QThread):
     """ Thread to run a direct Docker command (not a container exec command) """
@@ -191,6 +195,9 @@ class DockerDirectCommandThread(QThread):
         super().__init__()
         self.command = command
         self.remote_ssh_command = remote_ssh_command
+        # Store the result to be processed in the main thread
+        self.result_data = None
+        self.error_message = None
 
     def run(self):
         try:
@@ -204,8 +211,8 @@ class DockerDirectCommandThread(QThread):
             logging.info(f"Executing direct command: {' '.join(full_command)}")
             
             # Use a longer timeout for remote commands
-            timeout = 30 if self.remote_ssh_command else 15  # Increased timeout for remote/docker operations
-
+            timeout = 20 if self.remote_ssh_command else 10
+            
             try:
                 if os.name == 'nt':
                     result = subprocess.run(
@@ -216,30 +223,19 @@ class DockerDirectCommandThread(QThread):
                         creationflags=subprocess.CREATE_NO_WINDOW
                     )
                 else:
-                    result = subprocess.run(
-                        full_command,
-                        capture_output=True,
-                        text=True,
-                        timeout=timeout
-                    )
-                
-                # Return the result as a tuple (stdout, stderr, returncode)
-                self.command_finished.emit((result.stdout, result.stderr, result.returncode))
-                
+                    result = subprocess.run(full_command, capture_output=True, text=True, timeout=timeout)
+
+                self.result_data = (result.stdout, result.stderr, result.returncode)
             except subprocess.TimeoutExpired as e:
                 error_msg = f"Command timed out after {e.timeout} seconds: {' '.join(full_command)}"
                 print(error_msg)
-                if hasattr(e, 'stdout') and e.stdout:
-                    print(f"  stdout: {e.stdout}")
-                if hasattr(e, 'stderr') and e.stderr:
-                    print(f"  stderr: {e.stderr}")
-                self.command_error.emit(error_msg)
+                self.error_message = error_msg
         except Exception as e:
-            error_msg = f"Error executing command: {str(e)}\nCommand: {' '.join(full_command) if 'full_command' in locals() else ' '.join(self.command)}"
+            error_msg = f"Error executing command: {str(e)}\nCommand: {' '.join(full_command) if 'full_command' in locals() else self.command}"
             print(error_msg)
             import traceback
             traceback.print_exc()
-            self.command_error.emit(error_msg)
+            self.error_message = error_msg
 
 class DockerCommandHandler:
     """ Handles Docker commands """
@@ -293,10 +289,10 @@ class DockerCommandHandler:
             return "", str(e), 1
 
     def _ensure_image_exists(self) -> bool:
-        """Check if the Docker image exists locally and pull it if not.
+        """Check if the Docker image exists locally.
         
         Returns:
-            bool: True if image exists or was pulled successfully, False otherwise
+            bool: True if image exists, False otherwise
         """
         # Check if image exists
         command = ['docker', 'images', '-q', DOCKER_IMAGE]
@@ -305,14 +301,18 @@ class DockerCommandHandler:
         if stdout.strip():  # Image exists
             return True
             
-        # Image doesn't exist, try to pull it
-        pull_command = ['docker', 'pull', DOCKER_IMAGE]
-        stdout, stderr, return_code = self.execute_command(pull_command)
+        # Image doesn't exist, return False
+        return False
+
+    def pull_image(self, callback, error_callback):
+        """Pull the Docker image with progress reporting.
         
-        if return_code != 0:
-            raise Exception(f"Failed to pull Docker image: {stderr}")
-            
-        return True
+        Args:
+            callback: Success callback function
+            error_callback: Error callback function
+        """
+        pull_command = ['docker', 'pull', DOCKER_IMAGE]
+        self._execute_direct_threaded(pull_command, callback, error_callback)
 
     def check_and_pull_image_updates(self, image_name: str = None, tag: str = None) -> tuple:
         """Check if a Docker image has updates available and pull if it does.
@@ -349,49 +349,38 @@ class DockerCommandHandler:
         else:
             return (False, f"No updates available for Docker image {full_image_name}")
 
-    def launch_container(self, volume_name: str = None) -> None:
-        """Launch the container with an optional volume.
+    def launch_container(self, volume_name: str = None):
+        """Launch the Docker container with the specified volume name.
         
         Args:
             volume_name: Optional volume name to mount
         """
-        # Ensure image exists
-        self._ensure_image_exists()
+        # Ensure image exists - but don't pull it here, we'll handle that separately
+        # with the DockerPullDialog if needed
+        if not self._ensure_image_exists():
+            # Image doesn't exist, but we'll handle this in the caller
+            pass
         
         # Check if a container with the same name already exists
         inspect_command = ['docker', 'container', 'inspect', self.container_name]
         stdout, stderr, return_code = self.execute_command(inspect_command)
         
-        # If container exists (return code 0), remove it
-        if return_code == 0:
-            logging.info(f"Container {self.container_name} already exists, removing it first")
+        if return_code == 0:  # Container exists
+            # Remove the existing container
             remove_command = ['docker', 'rm', '-f', self.container_name]
             stdout, stderr, return_code = self.execute_command(remove_command)
+            
             if return_code != 0:
                 raise Exception(f"Failed to remove existing container: {stderr}")
-            
-            # Wait a moment to ensure Docker has fully released the name
-            time.sleep(0.5)
         
-        # Get the command to run
-        command = self.get_launch_command(volume_name)
+        # Launch the container
+        launch_command = self.get_launch_command(volume_name)
+        stdout, stderr, return_code = self.execute_command(launch_command)
         
-        # Log the full Docker command
-        logging.info(f"Launching container with command: {' '.join(command)}")
-        
-        # Execute the command
-        stdout, stderr, return_code = self.execute_command(command)
         if return_code != 0:
             raise Exception(f"Failed to launch container: {stderr}")
-
-        # Register the container with its volume
-        self.registry.add_container(self.container_name, volume_name)
         
-        # Log successful launch with volume information
-        if volume_name:
-            logging.info(f"Container {self.container_name} launched successfully with volume {volume_name}")
-        else:
-            logging.info(f"Container {self.container_name} launched successfully without a specific volume")
+        return stdout, stderr, return_code
 
     def get_launch_command(self, volume_name: str = None) -> list:
         """Get the Docker command that will be used to launch the container.
@@ -436,11 +425,23 @@ class DockerCommandHandler:
 
     def _execute_threaded(self, command: str, callback, error_callback, input_data: str = None) -> None:
         thread = DockerCommandThread(self.container_name, command, input_data, self.remote_ssh_command)
-        thread.command_finished.connect(callback)
-        thread.command_error.connect(error_callback)
+        
+        # Connect signals to slots that will safely emit signals in the main thread
+        thread.finished.connect(lambda: self._handle_thread_finished(thread, callback, error_callback))
+        
         self.threads.append(thread)  # Keep reference to prevent GC
-        thread.finished.connect(lambda: self.threads.remove(thread))
         thread.start()
+
+    def _handle_thread_finished(self, thread, callback, error_callback):
+        # This method runs in the main thread
+        if thread.error_message:
+            error_callback(thread.error_message)
+        elif thread.result_data:
+            callback(thread.result_data)
+        
+        # Remove thread from the list
+        if thread in self.threads:
+            self.threads.remove(thread)
 
     def get_node_info(self, callback, error_callback) -> None:
         def process_node_info(data: dict):
@@ -453,56 +454,85 @@ class DockerCommandHandler:
         self._execute_threaded('get_node_info', process_node_info, error_callback)
 
     def get_node_history(self, callback, error_callback) -> None:
-        def process_metrics(data: dict):
-            try:
-                metrics = NodeHistory.from_dict(data)
-                callback(metrics)
-            except Exception as e:
-                error_callback(f"Failed to process metrics: {str(e)}")
+        """Get node history metrics.
+        
+        Args:
+            callback: Success callback that receives a NodeHistory object
+            error_callback: Error callback that receives error message
+        """
+        try:
+            # Make sure we have a valid container name
+            if not self.container_name:
+                error_callback("No container name specified")
+                return
+                
+            def process_metrics(data: dict):
+                try:
+                    logging.info(f"Processing metrics data: {data.keys() if isinstance(data, dict) else type(data)}")
+                    metrics = NodeHistory.from_dict(data)
+                    callback(metrics)
+                except Exception as e:
+                    import traceback
+                    logging.error(f"Failed to process metrics: {str(e)}")
+                    logging.error(traceback.format_exc())
+                    error_callback(f"Failed to process metrics: {str(e)}")
 
-        self._execute_threaded('get_node_history', process_metrics, error_callback)
+            self._execute_threaded('get_node_history', process_metrics, error_callback)
+        except Exception as e:
+            logging.error(f"Error in get_node_history: {str(e)}")
+            error_callback(f"Error getting node history: {str(e)}")
 
     def get_allowed_addresses(self, callback, error_callback) -> None:
-        def process_allowed_addresses(output: str):
-            try:
-                # Convert plain text output to dictionary
-                allowed_dict = {}
-                for line in output.strip().split('\n'):
-                    if line.strip():  # Skip empty lines
-                        # Split on '#' and take only the first part
-                        main_part = line.split('#')[0].strip()
-                        if main_part:  # Skip if line is empty after removing comment
-                            address, alias = main_part.split(None, 1)  # Split on whitespace, max 1 split
-                            allowed_dict[address] = alias.strip()
-                
-                callback(allowed_dict)
-            except Exception as e:
-                error_callback(f"Failed to process allowed addresses: {str(e)}")
-
+        """Get allowed addresses.
+        
+        Args:
+            callback: Success callback that receives a dictionary of allowed addresses
+            error_callback: Error callback that receives error message
+        """
         try:
-            full_command = ['docker', 'exec', self.container_name, 'get_allowed']
-            
-            # Add remote prefix if needed
-            if self.remote_ssh_command:
-                full_command = self.remote_ssh_command + full_command
+            def process_allowed_addresses(output: str):
+                try:
+                    # Convert plain text output to dictionary
+                    allowed_dict = {}
+                    for line in output.strip().split('\n'):
+                        if line.strip():  # Skip empty lines
+                            # Split on '#' and take only the first part
+                            main_part = line.split('#')[0].strip()
+                            if main_part:  # Skip if line is empty after removing comment
+                                address, alias = main_part.split(None, 1)  # Split on whitespace, max 1 split
+                                allowed_dict[address] = alias.strip()
+                
+                    callback(allowed_dict)
+                except Exception as e:
+                    error_callback(f"Failed to process allowed addresses: {str(e)}")
 
-            if os.name == 'nt':
-                result = subprocess.run(
-                    full_command,
-                    capture_output=True,
-                    text=True,
-                    creationflags=subprocess.CREATE_NO_WINDOW
-                )
-            else:
-                result = subprocess.run(full_command, capture_output=True, text=True)
+            try:
+                full_command = ['docker', 'exec', self.container_name, 'get_allowed']
+                
+                # Add remote prefix if needed
+                if self.remote_ssh_command:
+                    full_command = self.remote_ssh_command + full_command
 
-            if result.returncode != 0:
-                error_callback(f"Command failed: {result.stderr}")
-                return
+                if os.name == 'nt':
+                    result = subprocess.run(
+                        full_command,
+                        capture_output=True,
+                        text=True,
+                        creationflags=subprocess.CREATE_NO_WINDOW
+                    )
+                else:
+                    result = subprocess.run(full_command, capture_output=True, text=True)
 
-            process_allowed_addresses(result.stdout)
+                if result.returncode != 0:
+                    error_callback(f"Command failed: {result.stderr}")
+                    return
+
+                process_allowed_addresses(result.stdout)
+            except Exception as e:
+                error_callback(str(e))
         except Exception as e:
-            error_callback(str(e))
+            logging.error(f"Error in get_allowed_addresses: {str(e)}")
+            error_callback(f"Error getting allowed addresses: {str(e)}")
 
     def update_allowed_batch(self, addresses_data: list, callback, error_callback) -> None:
         """Update allowed addresses in batch
@@ -674,20 +704,39 @@ class DockerCommandHandler:
         except Exception:
             return False
 
-    def _execute_direct_threaded(self, command: list, callback, error_callback) -> None:
-        """Execute a docker command in a separate thread.
+    def _execute_direct_threaded(self, command: list, callback=None, error_callback=None) -> None:
+        """Execute a command directly in a thread and call the callback with the result.
         
         Args:
-            command: Command list to execute
-            callback: Success callback that receives (stdout, stderr, return_code)
-            error_callback: Error callback that receives error message
+            command: Command to execute as a list of strings
+            callback: Function to call with the result (stdout, stderr, return_code)
+            error_callback: Function to call on error with error message
         """
         thread = DockerDirectCommandThread(command, self.remote_ssh_command)
-        thread.command_finished.connect(callback)
-        thread.command_error.connect(error_callback)
+        
+        # Connect signals to slots that will safely emit signals in the main thread
+        thread.finished.connect(lambda: self._handle_direct_thread_finished(thread, callback, error_callback))
+        
         self.threads.append(thread)  # Keep reference to prevent GC
-        thread.finished.connect(lambda: self.threads.remove(thread))
         thread.start()
+
+    def _handle_direct_thread_finished(self, thread, callback, error_callback):
+        # This method runs in the main thread
+        if thread.error_message and error_callback:
+            error_callback(thread.error_message)
+        elif thread.result_data and callback:
+            # Check if the callback expects a tuple or individual arguments
+            sig = inspect.signature(callback)
+            if len(sig.parameters) == 1:
+                # Callback expects a single tuple argument
+                callback(thread.result_data)
+            else:
+                # Callback expects individual arguments
+                callback(*thread.result_data)
+        
+        # Remove thread from the list
+        if thread in self.threads:
+            self.threads.remove(thread)
 
     def stop_container_threaded(self, container_name: str, callback, error_callback) -> None:
         """Stop a container in a background thread.
@@ -697,65 +746,39 @@ class DockerCommandHandler:
             callback: Success callback that receives (stdout, stderr, return_code)
             error_callback: Error callback that receives error message
         """
-        name = container_name or self.container_name
-        command = ['docker', 'stop', name]
-        
-        self._execute_direct_threaded(command, callback, error_callback)
+        try:
+            # Make sure we have a valid container name
+            if not container_name and not self.container_name:
+                error_callback("No container name specified")
+                return
+                
+            name = container_name or self.container_name
+            logging.info(f"Stopping container: {name}")
+            command = ['docker', 'stop', name]
+            self._execute_direct_threaded(command, callback, error_callback)
+        except Exception as e:
+            logging.error(f"Error in stop_container_threaded: {str(e)}")
+            error_callback(f"Error stopping container: {str(e)}")
 
-    def launch_container_threaded(self, volume_name: str, callback, error_callback) -> None:
-        """Launch the container with an optional volume in a background thread.
+    def launch_container_threaded(self, volume_name: str = None, callback=None, error_callback=None) -> None:
+        """Launch the container in a separate thread.
         
         Args:
             volume_name: Optional volume name to mount
-            callback: Success callback that receives (stdout, stderr, return_code)
-            error_callback: Error callback that receives error message
+            callback: Function to call on success with result tuple (stdout, stderr, return_code)
+            error_callback: Function to call on error with error message
         """
-        # First check if container with the same name already exists and remove it if necessary
-        def check_and_remove_existing():
-            try:
-                # Use Docker inspect to check if container exists
-                inspect_command = ['docker', 'container', 'inspect', self.container_name]
-                stdout, stderr, return_code = self.execute_command(inspect_command)
+        try:
+            # Make sure we have a valid container name
+            if not self.container_name:
+                if error_callback:
+                    error_callback("No container name specified")
+                return
                 
-                # If container exists (return code 0), remove it
-                if return_code == 0:
-                    # Container exists, force remove it
-                    logging.info(f"Container {self.container_name} already exists, removing it first")
-                    remove_command = ['docker', 'rm', '-f', self.container_name]
-                    rm_stdout, rm_stderr, rm_return_code = self.execute_command(remove_command)
-                    
-                    if rm_return_code != 0:
-                        error_callback(f"Failed to remove existing container: {rm_stderr}")
-                        return False
-                    
-                    # Wait a moment to ensure Docker has fully released the name
-                    time.sleep(0.5)
-                
-                # Return True to indicate the check passed (either no container existed or it was removed)
-                return True
-                
-            except Exception as e:
-                error_callback(f"Error checking container existence: {str(e)}")
-                return False
-        
-        def launch_container():
-            # Get the command to run
+            logging.info(f"Launching container: {self.container_name} with volume: {volume_name}")
             command = self.get_launch_command(volume_name)
-            
-            def on_launch_success(result):
-                stdout, stderr, return_code = result
-                if return_code == 0:
-                    # Register the container with its volume
-                    self.registry.add_container(self.container_name, volume_name)
-                    # Call the original callback
-                    callback(result)
-                else:
-                    error_callback(f"Docker launch failed: {stderr}")
-            
-            # Execute the command in a thread
-            self._execute_direct_threaded(command, on_launch_success, error_callback)
-        
-        # Start by checking for existing container
-        if check_and_remove_existing():
-            # Only proceed with launching if the check was successful
-            launch_container()
+            self._execute_direct_threaded(command, callback, error_callback)
+        except Exception as e:
+            logging.error(f"Error in launch_container_threaded: {str(e)}")
+            if error_callback:
+                error_callback(f"Error launching container: {str(e)}")
