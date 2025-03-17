@@ -45,23 +45,16 @@ class LoadingDialog(QDialog):
         self.setFixedSize(300, 180)
         self.setModal(True)
         
-        # Set consistent blue background color for the entire dialog
-        # Using QColor from the blue palette that matches the app theme
-        blue_bg_color = "#1a5fb4"  # A nice medium blue that works well with both dark/light text
-        text_color = "white"  # White text for better contrast on blue
-        
-        # Apply stylesheet with blue background
-        base_style = f"""
-            QDialog {{
-                background-color: {blue_bg_color};
-                color: {text_color};
+        # Use system colors instead of blue background
+        # This will match the application's theme
+        base_style = """
+            QDialog {
                 border: none;
                 border-radius: 8px;
-            }}
-            QLabel {{
-                color: {text_color};
+            }
+            QLabel {
                 font-size: 14px;
-            }}
+            }
         """
         
         # Apply platform-specific styles
@@ -69,7 +62,7 @@ class LoadingDialog(QDialog):
             # On Linux, add specific styling for the title bar
             linux_style = """
                 QDialog {
-                    border: 1px solid #0f3b71;
+                    border: 1px solid #777777;
                 }
             """
             base_style += linux_style
@@ -84,8 +77,6 @@ class LoadingDialog(QDialog):
         
         # Create loading indicator
         self.loading_indicator = LoadingIndicator(size=size)
-        if text_color:
-            self.loading_indicator.setColor(QColor(text_color))
         
         # Create message label
         self.message_label = QLabel(message)
