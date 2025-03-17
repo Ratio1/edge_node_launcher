@@ -60,6 +60,30 @@ class DockerCheckDialog(QDialog):
                 background-color: transparent;
                 font-size: 14px;
             }
+            QPushButton[type="toggle_button_start"] {
+                background-color: #1B47F7;
+                color: white;
+                border: 1px solid transparent;
+                border-radius: 15px;
+                padding: 10px 20px;
+                font-size: 16px;
+                min-height: 20px;
+            }
+            QPushButton[type="toggle_button_start"]:hover {
+                background-color: #4458FF;
+            }
+            QPushButton[type="toggle_button_stop"] {
+                background-color: #FADC33 !important;
+                color: #C4AC26;
+                border: 1px solid transparent;
+                border-radius: 15px;
+                padding: 10px 20px;
+                font-size: 16px;
+                min-height: 20px;
+            }
+            QPushButton[type="toggle_button_stop"]:hover {
+                background-color: #FFE138 !important;
+            }
         """
         
         # Apply theme from parent if available

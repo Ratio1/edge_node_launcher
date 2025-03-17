@@ -1,5 +1,6 @@
 from PyQt5.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QApplication, QProgressBar, QFrame
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QApplication, QProgressBar, QFrame,
+    QScrollArea, QWidget
 )
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot
 from PyQt5.QtGui import QColor, QPalette
@@ -23,8 +24,8 @@ class DockerPullDialog(QDialog):
         """
         super().__init__(parent)
         self.setWindowTitle("Pulling Docker Image")
-        self.setMinimumWidth(500)
-        self.setMinimumHeight(300)
+        self.setMinimumWidth(600)  # Increased width
+        self.setMinimumHeight(500)  # Increased height
         
         # Set up the dialog UI
         self._setup_ui()
@@ -32,12 +33,12 @@ class DockerPullDialog(QDialog):
     def _setup_ui(self):
         """Set up the dialog UI."""
         layout = QVBoxLayout()
-        layout.setSpacing(10)
-        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)  # Increased spacing
+        layout.setContentsMargins(25, 25, 25, 25)  # Increased margins
         
         # Title
         title_label = QLabel("Pulling Docker Image")
-        title_label.setStyleSheet("font-size: 18px; font-weight: bold;")
+        title_label.setStyleSheet("font-size: 20px; font-weight: bold;")  # Larger font
         title_label.setAlignment(Qt.AlignCenter)
         
         # Info label
@@ -49,17 +50,19 @@ class DockerPullDialog(QDialog):
         self.overall_progress = QProgressBar()
         self.overall_progress.setRange(0, 100)
         self.overall_progress.setValue(0)
+        self.overall_progress.setMinimumHeight(25)  # Taller progress bar
         self.overall_progress.setStyleSheet("""
             QProgressBar {
                 border: 1px solid #555;
-                border-radius: 5px;
+                border-radius: 6px;
                 text-align: center;
-                height: 20px;
+                height: 25px;
                 background-color: #222;
+                font-weight: bold;
             }
             QProgressBar::chunk {
-                background-color: #3498db;
-                border-radius: 5px;
+                background-color: #2563eb;
+                border-radius: 6px;
             }
         """)
         
@@ -69,24 +72,58 @@ class DockerPullDialog(QDialog):
         layer_frame.setStyleSheet("""
             QFrame {
                 background-color: #1e293b;
-                border-radius: 8px;
-                padding: 10px;
+                border-radius: 10px;
+                padding: 15px;
             }
         """)
         
-        layer_frame_layout = QVBoxLayout(layer_frame)
-        layer_frame_layout.setContentsMargins(15, 15, 15, 15)
-        layer_frame_layout.setSpacing(10)
+        # Create a scroll area for layers
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.NoFrame)
+        scroll_area.setStyleSheet("""
+            QScrollArea {
+                border: none;
+                background-color: transparent;
+            }
+            QScrollBar:vertical {
+                border: none;
+                background-color: #334155;
+                width: 10px;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:vertical {
+                background-color: #475569;
+                border-radius: 5px;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+        """)
+        
+        # Container widget for the scroll area
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setSpacing(12)  # Increased spacing between layers
+        scroll_layout.setContentsMargins(15, 15, 15, 15)
         
         # Layer label
         layer_label = QLabel("Layer Progress:")
-        layer_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #f8fafc;")
-        layer_frame_layout.addWidget(layer_label)
+        layer_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #f8fafc;")
+        scroll_layout.addWidget(layer_label)
         
         # Layer progress container
         self.layer_layout = QVBoxLayout()
-        self.layer_layout.setSpacing(8)
-        layer_frame_layout.addLayout(self.layer_layout)
+        self.layer_layout.setSpacing(10)
+        scroll_layout.addLayout(self.layer_layout)
+        scroll_layout.addStretch()
+        
+        scroll_area.setWidget(scroll_content)
+        
+        # Add scroll area to layer frame
+        layer_frame_layout = QVBoxLayout(layer_frame)
+        layer_frame_layout.setContentsMargins(0, 0, 0, 0)
+        layer_frame_layout.addWidget(scroll_area)
         
         # Add widgets to layout
         layout.addWidget(title_label)
@@ -139,27 +176,32 @@ class DockerPullDialog(QDialog):
                 
                 # Create progress bar for this layer
                 layer_layout = QHBoxLayout()
+                layer_layout.setSpacing(12)  # Increased spacing
+                
                 layer_label = QLabel(f"{layer_id[:8]}...")
-                layer_label.setFixedWidth(80)
-                layer_label.setStyleSheet("color: #60a5fa; font-weight: bold; font-family: monospace;")
+                layer_label.setFixedWidth(90)  # Slightly wider for better readability
+                layer_label.setStyleSheet("color: #60a5fa; font-weight: bold; font-family: monospace; font-size: 13px;")
                 
                 status_label = QLabel(status)
-                status_label.setStyleSheet("color: #e2e8f0; font-family: monospace;")
+                status_label.setStyleSheet("color: #e2e8f0; font-family: monospace; font-size: 13px;")
                 
                 layer_progress = QProgressBar()
                 layer_progress.setRange(0, 100)
                 layer_progress.setValue(0)
+                layer_progress.setMinimumHeight(20)  # Taller progress bars
                 layer_progress.setStyleSheet("""
                     QProgressBar {
                         border: 1px solid #475569;
-                        border-radius: 4px;
+                        border-radius: 5px;
                         text-align: center;
-                        height: 16px;
+                        height: 20px;
                         background-color: #334155;
+                        font-size: 12px;
+                        font-weight: bold;
                     }
                     QProgressBar::chunk {
-                        background-color: #2563eb;
-                        border-radius: 4px;
+                        background-color: #3b82f6;
+                        border-radius: 5px;
                     }
                 """)
                 
@@ -226,27 +268,32 @@ class DockerPullDialog(QDialog):
                 
                 # Create progress bar for this status
                 layer_layout = QHBoxLayout()
+                layer_layout.setSpacing(12)  # Increased spacing
+                
                 layer_label = QLabel("Layer")
-                layer_label.setFixedWidth(80)
-                layer_label.setStyleSheet("color: #60a5fa; font-weight: bold; font-family: monospace;")
+                layer_label.setFixedWidth(90)  # Slightly wider for better readability
+                layer_label.setStyleSheet("color: #60a5fa; font-weight: bold; font-family: monospace; font-size: 13px;")
                 
                 status_label = QLabel(status)
-                status_label.setStyleSheet("color: #e2e8f0; font-family: monospace;")
+                status_label.setStyleSheet("color: #e2e8f0; font-family: monospace; font-size: 13px;")
                 
                 layer_progress = QProgressBar()
                 layer_progress.setRange(0, 100)
                 layer_progress.setValue(0)
+                layer_progress.setMinimumHeight(20)  # Taller progress bars
                 layer_progress.setStyleSheet("""
                     QProgressBar {
                         border: 1px solid #475569;
-                        border-radius: 4px;
+                        border-radius: 5px;
                         text-align: center;
-                        height: 16px;
+                        height: 20px;
                         background-color: #334155;
+                        font-size: 12px;
+                        font-weight: bold;
                     }
                     QProgressBar::chunk {
-                        background-color: #2563eb;
-                        border-radius: 4px;
+                        background-color: #3b82f6;
+                        border-radius: 5px;
                     }
                 """)
                 
