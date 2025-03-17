@@ -1,6 +1,7 @@
 from PyQt5.QtWidgets import (QDialog, QProgressBar, QLabel, QVBoxLayout, 
                             QPushButton, QHBoxLayout, QWidget, QScrollArea)
 from PyQt5.QtCore import Qt, pyqtSlot, QTimer
+from PyQt5.QtGui import QPalette
 import humanize
 
 class ImagePullProgressDialog(QDialog):
@@ -11,6 +12,34 @@ class ImagePullProgressDialog(QDialog):
         self.setWindowTitle("Updating Docker Image")
         self.setMinimumWidth(500)
         self.setMinimumHeight(200)
+        
+        # Apply system colors for consistent appearance
+        self.setStyleSheet("""
+            QDialog {
+                border: none;
+                border-radius: 8px;
+            }
+            QLabel {
+                background-color: transparent;
+                font-size: 14px;
+            }
+            QProgressBar {
+                border: 1px solid palette(mid);
+                border-radius: 4px;
+                text-align: center;
+                background-color: palette(base);
+                height: 20px;
+            }
+            QProgressBar::chunk {
+                background-color: palette(highlight);
+                width: 1px;
+            }
+            QPushButton {
+                padding: 6px 12px;
+                border-radius: 4px;
+            }
+        """)
+        
         self.setup_ui()
         self.layer_widgets = {}
         

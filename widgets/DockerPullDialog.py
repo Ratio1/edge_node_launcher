@@ -2,7 +2,7 @@ from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QApplication, QProgressBar
 )
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot
-from PyQt5.QtGui import QColor
+from PyQt5.QtGui import QColor, QPalette
 import platform
 import re
 from app_forms.frm_utils import LoadingIndicator
@@ -39,34 +39,27 @@ class DockerPullDialog(QDialog):
         self.setFixedSize(500, 300)  # Larger dialog to show layer progress
         self.setModal(True)
         
-        # Set consistent blue background color for the entire dialog
-        blue_bg_color = "#1a5fb4"
-        text_color = "white"
-        
-        # Apply stylesheet with blue background
-        base_style = f"""
-            QDialog {{
-                background-color: {blue_bg_color};
-                color: {text_color};
+        # Use system colors instead of hardcoded blue background
+        base_style = """
+            QDialog {
                 border: none;
                 border-radius: 8px;
-            }}
-            QLabel {{
-                color: {text_color};
+            }
+            QLabel {
+                background-color: transparent;
                 font-size: 14px;
-            }}
-            QProgressBar {{
-                border: 1px solid #0f3b71;
+            }
+            QProgressBar {
+                border: 1px solid palette(mid);
                 border-radius: 4px;
                 text-align: center;
-                background-color: #0f3b71;
-                color: white;
+                background-color: palette(base);
                 height: 20px;
-            }}
-            QProgressBar::chunk {{
-                background-color: #26a269;
+            }
+            QProgressBar::chunk {
+                background-color: palette(highlight);
                 width: 1px;
-            }}
+            }
         """
         
         # Apply platform-specific styles
@@ -74,7 +67,7 @@ class DockerPullDialog(QDialog):
             # On Linux, add specific styling for the title bar
             linux_style = """
                 QDialog {
-                    border: 1px solid #0f3b71;
+                    border: 1px solid palette(mid);
                 }
             """
             base_style += linux_style

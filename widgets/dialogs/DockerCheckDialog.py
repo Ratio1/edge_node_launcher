@@ -2,6 +2,7 @@ import webbrowser
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
                            QLabel, QApplication)
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QPalette
 
 class DockerCheckDialog(QDialog):
     def __init__(self, parent=None, icon=None):
@@ -41,27 +42,32 @@ class DockerCheckDialog(QDialog):
         
         # Quit button - explicitly using toggle_button_stop styles
         self.quit_button = QPushButton('Quit')
-        # Set the property to use toggle_button_stop styles (#FADC33 bg, #C4AC26 text, #FFE138 hover)
+        # Set the property to use toggle_button_stop styles
         self.quit_button.setProperty("type", "toggle_button_stop")
-        # Set additional explicit styling to ensure toggle_button_stop styles are applied
-        self.quit_button.setStyleSheet("""
-            /* Ensuring toggle_button_stop style is applied to quit button */
-            background-color: #FADC33;
-            color: #C4AC26;
-            border: 1px solid transparent;
-        """)
         self.quit_button.clicked.connect(self.reject)
         button_layout.addWidget(self.quit_button)
         
         layout.addLayout(button_layout)
         self.setLayout(layout)
         
+        # Apply base dialog styling with system colors
+        base_style = """
+            QDialog {
+                border: none;
+                border-radius: 8px;
+            }
+            QLabel {
+                background-color: transparent;
+                font-size: 14px;
+            }
+        """
+        
         # Apply theme from parent if available
         if parent and hasattr(parent, '_current_stylesheet'):
-            self.setStyleSheet(parent._current_stylesheet)
+            self.setStyleSheet(base_style + parent._current_stylesheet)
         else:
             # Apply default button styles if no parent stylesheet is available
-            self.setStyleSheet("""
+            self.setStyleSheet(base_style + """
                 QPushButton[type="toggle_button_start"] {
                     background-color: #1B47F7;
                     color: white;
@@ -96,4 +102,4 @@ class DockerCheckDialog(QDialog):
     
     def open_docker_download(self):
         """Open the Docker download page in the default browser."""
-        webbrowser.open('https://www.docker.com/products/docker-desktop') 
+        webbrowser.open('https://www.docker.com/products/docker-desktop')
