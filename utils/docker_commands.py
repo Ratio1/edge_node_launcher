@@ -354,6 +354,9 @@ class DockerCommandHandler:
         
         Args:
             volume_name: Optional volume name to mount
+            
+        Returns:
+            tuple: (stdout, stderr, return_code) from the command execution
         """
         # Ensure image exists - but don't pull it here, we'll handle that separately
         # with the DockerPullDialog if needed
@@ -366,21 +369,29 @@ class DockerCommandHandler:
         stdout, stderr, return_code = self.execute_command(inspect_command)
         
         if return_code == 0:  # Container exists
-            # Remove the existing container
-            remove_command = ['docker', 'rm', '-f', self.container_name]
-            stdout, stderr, return_code = self.execute_command(remove_command)
+            # Check if the container is already running
+            ps_command = ['docker', 'ps', '-q', '-f', f'name={self.container_name}']
+            ps_stdout, ps_stderr, ps_return_code = self.execute_command(ps_command)
+            
+            if ps_return_code != 0:
+                raise Exception(f"Failed to check container status: {ps_stderr}")
+                
+            if ps_stdout.strip():  # Container is already running
+                logging.info(f"Container {self.container_name} is already running")
+                return "Container already running", "", 0
+            else:  # Container exists but is not running, start it
+                logging.info(f"Starting existing container {self.container_name}")
+                start_command = ['docker', 'start', self.container_name]
+                return self.execute_command(start_command)
+        else:  # Container doesn't exist, create it
+            # Launch the container
+            launch_command = self.get_launch_command(volume_name)
+            stdout, stderr, return_code = self.execute_command(launch_command)
             
             if return_code != 0:
-                raise Exception(f"Failed to remove existing container: {stderr}")
-        
-        # Launch the container
-        launch_command = self.get_launch_command(volume_name)
-        stdout, stderr, return_code = self.execute_command(launch_command)
-        
-        if return_code != 0:
-            raise Exception(f"Failed to launch container: {stderr}")
-        
-        return stdout, stderr, return_code
+                raise Exception(f"Failed to launch container: {stderr}")
+            
+            return stdout, stderr, return_code
 
     def get_launch_command(self, volume_name: str = None) -> list:
         """Get the Docker command that will be used to launch the container.
@@ -468,6 +479,10 @@ class DockerCommandHandler:
                 
             def process_metrics(data: dict):
                 try:
+                    if not data:
+                        error_callback("No data returned from container")
+                        return
+                        
                     logging.info(f"Processing metrics data: {data.keys() if isinstance(data, dict) else type(data)}")
                     metrics = NodeHistory.from_dict(data)
                     callback(metrics)
@@ -738,6 +753,84 @@ class DockerCommandHandler:
         if thread in self.threads:
             self.threads.remove(thread)
 
+    def launch_container_threaded(self, volume_name: str = None, callback=None, error_callback=None) -> None:
+        """Launch the container in a separate thread.
+        
+        Args:
+            volume_name: Optional volume name to mount
+            callback: Function to call on success with result tuple (stdout, stderr, return_code)
+            error_callback: Function to call on error with error message
+        """
+        try:
+            # Make sure we have a valid container name
+            if not self.container_name:
+                if error_callback:
+                    error_callback("No container name specified")
+                return
+                
+            logging.info(f"Launching container: {self.container_name} with volume: {volume_name}")
+            
+            # First check if the container already exists
+            inspect_command = ['docker', 'container', 'inspect', self.container_name]
+            self._execute_direct_threaded(
+                inspect_command,
+                lambda result: self._handle_container_inspect_result(result, volume_name, callback, error_callback),
+                error_callback
+            )
+        except Exception as e:
+            logging.error(f"Error in launch_container_threaded: {str(e)}")
+            if error_callback:
+                error_callback(f"Error launching container: {str(e)}")
+                
+    def _handle_container_inspect_result(self, result, volume_name, callback, error_callback):
+        """Handle the result of container inspection during launch.
+        
+        Args:
+            result: The result tuple (stdout, stderr, return_code)
+            volume_name: The volume name to use when creating a new container
+            callback: The success callback
+            error_callback: The error callback
+        """
+        stdout, stderr, return_code = result
+        
+        if return_code == 0:  # Container exists
+            logging.info(f"Container {self.container_name} already exists, starting it instead of creating a new one")
+            
+            # Check if the container is already running
+            ps_command = ['docker', 'ps', '-q', '-f', f'name={self.container_name}']
+            self._execute_direct_threaded(
+                ps_command,
+                lambda ps_result: self._handle_container_ps_result(ps_result, callback, error_callback),
+                error_callback
+            )
+        else:  # Container doesn't exist, create it
+            command = self.get_launch_command(volume_name)
+            self._execute_direct_threaded(command, callback, error_callback)
+            
+    def _handle_container_ps_result(self, result, callback, error_callback):
+        """Handle the result of container ps command to check if it's running.
+        
+        Args:
+            result: The result tuple (stdout, stderr, return_code)
+            callback: The success callback
+            error_callback: The error callback
+        """
+        stdout, stderr, return_code = result
+        
+        if return_code != 0:
+            if error_callback:
+                error_callback(f"Failed to check container status: {stderr}")
+            return
+            
+        if stdout.strip():  # Container is already running
+            logging.info(f"Container {self.container_name} is already running")
+            if callback:
+                callback(("Container already running", "", 0))
+        else:  # Container exists but is not running, start it
+            logging.info(f"Starting existing container {self.container_name}")
+            start_command = ['docker', 'start', self.container_name]
+            self._execute_direct_threaded(start_command, callback, error_callback)
+
     def stop_container_threaded(self, container_name: str, callback, error_callback) -> None:
         """Stop a container in a background thread.
         
@@ -759,26 +852,3 @@ class DockerCommandHandler:
         except Exception as e:
             logging.error(f"Error in stop_container_threaded: {str(e)}")
             error_callback(f"Error stopping container: {str(e)}")
-
-    def launch_container_threaded(self, volume_name: str = None, callback=None, error_callback=None) -> None:
-        """Launch the container in a separate thread.
-        
-        Args:
-            volume_name: Optional volume name to mount
-            callback: Function to call on success with result tuple (stdout, stderr, return_code)
-            error_callback: Function to call on error with error message
-        """
-        try:
-            # Make sure we have a valid container name
-            if not self.container_name:
-                if error_callback:
-                    error_callback("No container name specified")
-                return
-                
-            logging.info(f"Launching container: {self.container_name} with volume: {volume_name}")
-            command = self.get_launch_command(volume_name)
-            self._execute_direct_threaded(command, callback, error_callback)
-        except Exception as e:
-            logging.error(f"Error in launch_container_threaded: {str(e)}")
-            if error_callback:
-                error_callback(f"Error launching container: {str(e)}")
