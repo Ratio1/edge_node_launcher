@@ -2791,3 +2791,235 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
     # Always apply the style to ensure it updates when theme changes
     self.apply_button_style(self.toggleButton, new_style)
     self.toggleButton.setEnabled(True)
+
+  def _perform_container_launch(self, container_name, volume_name):
+    """Perform the actual container launch operation after the dialog is shown."""
+    try:
+        # Clear info displays
+        self._clear_info_display()
+        self.loading_indicator.start()
+        
+        # Update loading dialog with progress
+        if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None and self.launcher_dialog.isVisible():
+            self.launcher_dialog.update_progress("Preparing Docker command...")
+        
+        # Get the Docker command that will be executed (for logging purposes only)
+        command = self.docker_handler.get_launch_command(volume_name=volume_name)
+        # Log the command without debug flag to ensure it's always visible
+        self.add_log(f'Docker command: {" ".join(command)}', color="blue")
+        
+        # First check if the container already exists
+        container_exists = self.container_exists_in_docker(container_name)
+        if container_exists:
+            # Update loading dialog with progress
+            if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None and self.launcher_dialog.isVisible():
+                self.launcher_dialog.update_progress(f"Removing existing container '{container_name}' before launch...")
+            self.add_log(f"Container {container_name} already exists, removing it first", color="yellow")
+        
+        # Check if Docker image exists
+        image_exists = self.docker_handler._ensure_image_exists()
+        if not image_exists:
+            # Close the existing launcher dialog if it's open
+            if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None and self.launcher_dialog.isVisible():
+                self.launcher_dialog.safe_close()
+                QTimer.singleShot(500, lambda: setattr(self, 'launcher_dialog', None) if hasattr(self, 'launcher_dialog') else None)
+            
+            # Show Docker pull dialog
+            from widgets.DockerPullDialog import DockerPullDialog
+            self.docker_pull_dialog = DockerPullDialog(self)
+            
+            # Connect the pull_complete signal to handle completion
+            self.docker_pull_dialog.pull_complete.connect(self._on_docker_pull_complete)
+            
+            # Store volume_name for later use after pull completes
+            self._pending_volume_name = volume_name
+            
+            # Show the dialog
+            self.docker_pull_dialog.show()
+            
+            # Define callbacks for Docker pull
+            def on_pull_success(result):
+                stdout, stderr, return_code = result
+                # Process each line of output to update the dialog
+                for line in stdout.splitlines():
+                    if hasattr(self, 'docker_pull_dialog') and self.docker_pull_dialog is not None and self.docker_pull_dialog.isVisible():
+                        self.docker_pull_dialog.update_pull_progress(line)
+                
+                # If pull completed successfully
+                if return_code == 0:
+                    if hasattr(self, 'docker_pull_dialog') and self.docker_pull_dialog is not None and self.docker_pull_dialog.isVisible():
+                        self.docker_pull_dialog.pull_complete.emit(True, "Docker image pulled successfully")
+                else:
+                    error_msg = f"Failed to pull Docker image: {stderr}"
+                    self.add_log(error_msg, color="red")
+                    if hasattr(self, 'docker_pull_dialog') and self.docker_pull_dialog is not None and self.docker_pull_dialog.isVisible():
+                        self.docker_pull_dialog.pull_complete.emit(False, error_msg)
+            
+            def on_pull_error(error_msg):
+                self.add_log(f"Error pulling Docker image: {error_msg}", color="red")
+                if hasattr(self, 'docker_pull_dialog') and self.docker_pull_dialog is not None and self.docker_pull_dialog.isVisible():
+                    self.docker_pull_dialog.pull_complete.emit(False, error_msg)
+            
+            # Start the Docker pull operation
+            self.docker_handler.pull_image(on_pull_success, on_pull_error)
+            
+            # Exit this method early - we'll continue after the pull completes
+            return
+        
+        # Update loading dialog with progress
+        if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None and self.launcher_dialog.isVisible():
+            self.launcher_dialog.update_progress("Launching Docker container...")
+        
+        # Define success callback for threaded operation
+        def on_launch_success(result):
+            stdout, stderr, return_code = result
+            if return_code != 0:
+                # Handle error case
+                error_msg = f"Failed to launch container: {stderr}"
+                self.add_log(error_msg, color="red")
+                self.toast.show_notification(NotificationType.ERROR, error_msg)
+                return
+            
+            # Update loading dialogs with progress    
+            if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None and self.launcher_dialog.isVisible():
+                self.launcher_dialog.update_progress("Container launched, updating configuration...")
+            elif hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible():
+                self.startup_dialog.update_progress("Container launched, updating configuration...")
+            
+            # Update last used timestamp in config
+            from datetime import datetime
+            self.config_manager.update_last_used(container_name, datetime.now().isoformat())
+            
+            # Update volume name in config if it's not already set
+            container_config = self.config_manager.get_container(container_name)
+            if container_config and not container_config.volume:
+                self.config_manager.update_volume(container_name, volume_name)
+                self.add_log(f"Updated volume name in config: {volume_name}", debug=True)
+            
+            # Update loading dialogs with progress
+            if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None and self.launcher_dialog.isVisible():
+                self.launcher_dialog.update_progress("Updating user interface...")
+            elif hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible():
+                self.startup_dialog.update_progress("Updating user interface...")
+            
+            # Update UI after launch
+            self.post_launch_setup()
+            self.refresh_local_address()
+            self.plot_data()
+            self.update_toggle_button_text()
+            
+            # Stop loading indicator
+            self.loading_indicator.stop()
+            
+            # Update loading dialogs with completion message
+            if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None and self.launcher_dialog.isVisible():
+                self.launcher_dialog.update_progress("Container launched successfully!")
+            elif hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible():
+                self.startup_dialog.update_progress("Container launched successfully!")
+            
+            # Close the loading dialogs after a short delay to show success message
+            launcher_dialog_visible = hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None and self.launcher_dialog.isVisible()
+            if launcher_dialog_visible:
+                QTimer.singleShot(500, lambda: self.launcher_dialog.safe_close() if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None else None)
+                # Schedule removal of the reference after a delay
+                QTimer.singleShot(1000, lambda: setattr(self, 'launcher_dialog', None) if hasattr(self, 'launcher_dialog') else None)
+            
+            startup_dialog_visible = hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible()
+            if startup_dialog_visible:
+                QTimer.singleShot(500, lambda: self.startup_dialog.safe_close() if hasattr(self, 'startup_dialog') and self.startup_dialog is not None else None)
+                # Schedule removal of the reference after a delay
+                QTimer.singleShot(1000, lambda: setattr(self, 'startup_dialog', None) if hasattr(self, 'startup_dialog') else None)
+            
+            # Show success notification
+            # Get node alias from config if available
+            node_display_name = container_name
+            container_config = self.config_manager.get_container(container_name)
+            if container_config and container_config.node_alias:
+                node_display_name = container_config.node_alias
+                self.toast.show_notification(NotificationType.SUCCESS, f"Node '{node_display_name}' launched successfully")
+            else:
+                self.toast.show_notification(NotificationType.SUCCESS, "Edge Node launched successfully")
+        
+        # Define error callback for threaded operation
+        def on_launch_error(error_msg):
+            # Stop loading indicator on error
+            self.loading_indicator.stop()
+            
+            # Check if this is a "container already exists" error
+            if "Conflict" in error_msg and "is already in use" in error_msg:
+                # Update loading dialogs with specific error message
+                if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None and self.launcher_dialog.isVisible():
+                    self.launcher_dialog.update_progress("Container name conflict detected. Trying again with container removal...")
+                elif hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible():
+                    self.startup_dialog.update_progress("Container name conflict detected. Trying again with container removal...")
+                
+                # Try to forcefully remove the container and retry launch
+                try:
+                    # Extract container ID from error message if possible
+                    import re
+                    container_id_match = re.search(r'by container "([^"]+)"', error_msg)
+                    container_id = container_id_match.group(1) if container_id_match else None
+                    
+                    if container_id:
+                        self.add_log(f"Attempting to forcefully remove container with ID: {container_id}", color="yellow")
+                        # Run docker rm -f directly 
+                        remove_cmd = ['docker', 'rm', '-f', container_id]
+                        result = subprocess.run(remove_cmd, capture_output=True, text=True)
+                        if result.returncode == 0:
+                            self.add_log("Successfully removed conflicting container, retrying launch", color="blue")
+                            # Wait to ensure Docker has released the resources
+                            import time
+                            time.sleep(1)
+                            # Retry the launch
+                            self.docker_handler.launch_container_threaded(volume_name, on_launch_success, on_launch_error)
+                            return
+                except Exception as retry_err:
+                    self.add_log(f"Failed to resolve container conflict: {retry_err}", color="red")
+            
+            # Update loading dialogs with error message
+            if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None and self.launcher_dialog.isVisible():
+                self.launcher_dialog.update_progress(f"Error: {error_msg}")
+            elif hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible():
+                self.startup_dialog.update_progress(f"Error: {error_msg}")
+            
+            # Close the loading dialogs after a short delay to show error message
+            launcher_dialog_visible = hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None and self.launcher_dialog.isVisible()
+            if launcher_dialog_visible:
+                QTimer.singleShot(1500, lambda: self.launcher_dialog.safe_close() if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None else None)
+                # Schedule removal of the reference after a delay
+                QTimer.singleShot(2000, lambda: setattr(self, 'launcher_dialog', None) if hasattr(self, 'launcher_dialog') else None)
+            
+            startup_dialog_visible = hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible()
+            if startup_dialog_visible:
+                QTimer.singleShot(1500, lambda: self.startup_dialog.safe_close() if hasattr(self, 'startup_dialog') and self.startup_dialog is not None else None)
+                # Schedule removal of the reference after a delay
+                QTimer.singleShot(2000, lambda: setattr(self, 'startup_dialog', None) if hasattr(self, 'startup_dialog') else None)
+                
+            error_msg = f"Failed to launch container: {error_msg}"
+            self.add_log(error_msg, color="red")
+            self.toast.show_notification(NotificationType.ERROR, error_msg)
+        
+        # Launch the container in a thread
+        self.docker_handler.launch_container_threaded(volume_name, on_launch_success, on_launch_error)
+        
+    except Exception as e:
+        # Stop loading indicator on error
+        self.loading_indicator.stop()
+        
+        # Close the startup dialog if it exists
+        startup_dialog_visible = hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible()
+        if startup_dialog_visible:
+            self.startup_dialog.safe_close()
+            # Schedule removal of the reference after a delay
+            QTimer.singleShot(500, lambda: setattr(self, 'startup_dialog', None) if hasattr(self, 'startup_dialog') else None)
+            
+        # Close the launcher dialog if it exists
+        launcher_dialog_visible = hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None and self.launcher_dialog.isVisible()
+        if launcher_dialog_visible:
+            self.launcher_dialog.safe_close()
+            # Schedule removal of the reference after a delay
+            QTimer.singleShot(500, lambda: setattr(self, 'launcher_dialog', None) if hasattr(self, 'launcher_dialog') else None)
+            
+        error_msg = f"Failed to launch container: {str(e)}"
+        self.add_log(error_msg, color="red")
+        self.toast.show_notification(NotificationType.ERROR, error_msg)

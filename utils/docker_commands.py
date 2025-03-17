@@ -369,29 +369,22 @@ class DockerCommandHandler:
         stdout, stderr, return_code = self.execute_command(inspect_command)
         
         if return_code == 0:  # Container exists
-            # Check if the container is already running
-            ps_command = ['docker', 'ps', '-q', '-f', f'name={self.container_name}']
-            ps_stdout, ps_stderr, ps_return_code = self.execute_command(ps_command)
-            
-            if ps_return_code != 0:
-                raise Exception(f"Failed to check container status: {ps_stderr}")
-                
-            if ps_stdout.strip():  # Container is already running
-                logging.info(f"Container {self.container_name} is already running")
-                return "Container already running", "", 0
-            else:  # Container exists but is not running, start it
-                logging.info(f"Starting existing container {self.container_name}")
-                start_command = ['docker', 'start', self.container_name]
-                return self.execute_command(start_command)
-        else:  # Container doesn't exist, create it
-            # Launch the container
-            launch_command = self.get_launch_command(volume_name)
-            stdout, stderr, return_code = self.execute_command(launch_command)
+            # Remove the existing container
+            logging.info(f"Container {self.container_name} already exists, removing it")
+            remove_command = ['docker', 'rm', '-f', self.container_name]
+            stdout, stderr, return_code = self.execute_command(remove_command)
             
             if return_code != 0:
-                raise Exception(f"Failed to launch container: {stderr}")
-            
-            return stdout, stderr, return_code
+                raise Exception(f"Failed to remove existing container: {stderr}")
+        
+        # Launch the container
+        launch_command = self.get_launch_command(volume_name)
+        stdout, stderr, return_code = self.execute_command(launch_command)
+        
+        if return_code != 0:
+            raise Exception(f"Failed to launch container: {stderr}")
+        
+        return stdout, stderr, return_code
 
     def get_launch_command(self, volume_name: str = None) -> list:
         """Get the Docker command that will be used to launch the container.
@@ -754,7 +747,7 @@ class DockerCommandHandler:
             self.threads.remove(thread)
 
     def launch_container_threaded(self, volume_name: str = None, callback=None, error_callback=None) -> None:
-        """Launch the container in a separate thread.
+        """Launch the Docker container in a separate thread.
         
         Args:
             volume_name: Optional volume name to mount
@@ -774,7 +767,7 @@ class DockerCommandHandler:
             inspect_command = ['docker', 'container', 'inspect', self.container_name]
             self._execute_direct_threaded(
                 inspect_command,
-                lambda result: self._handle_container_inspect_result(result, volume_name, callback, error_callback),
+                lambda result: self._handle_container_inspect_result_remove(result, volume_name, callback, error_callback),
                 error_callback
             )
         except Exception as e:
@@ -782,54 +775,52 @@ class DockerCommandHandler:
             if error_callback:
                 error_callback(f"Error launching container: {str(e)}")
                 
-    def _handle_container_inspect_result(self, result, volume_name, callback, error_callback):
+    def _handle_container_inspect_result_remove(self, result, volume_name, callback, error_callback):
         """Handle the result of container inspection during launch.
         
+        If container exists, remove it and then create a new one.
+        
         Args:
-            result: The result tuple (stdout, stderr, return_code)
-            volume_name: The volume name to use when creating a new container
-            callback: The success callback
-            error_callback: The error callback
+            result: Tuple of (stdout, stderr, return_code) from inspect command
+            volume_name: Volume name to mount
+            callback: Success callback
+            error_callback: Error callback
         """
         stdout, stderr, return_code = result
         
         if return_code == 0:  # Container exists
-            logging.info(f"Container {self.container_name} already exists, starting it instead of creating a new one")
-            
-            # Check if the container is already running
-            ps_command = ['docker', 'ps', '-q', '-f', f'name={self.container_name}']
+            # Container exists, remove it
+            logging.info(f"Container {self.container_name} already exists, removing it")
+            remove_command = ['docker', 'rm', '-f', self.container_name]
             self._execute_direct_threaded(
-                ps_command,
-                lambda ps_result: self._handle_container_ps_result(ps_result, callback, error_callback),
+                remove_command,
+                lambda remove_result: self._handle_container_remove_result(remove_result, volume_name, callback, error_callback),
                 error_callback
             )
         else:  # Container doesn't exist, create it
-            command = self.get_launch_command(volume_name)
-            self._execute_direct_threaded(command, callback, error_callback)
-            
-    def _handle_container_ps_result(self, result, callback, error_callback):
-        """Handle the result of container ps command to check if it's running.
+            # Launch the container
+            launch_command = self.get_launch_command(volume_name)
+            self._execute_direct_threaded(launch_command, callback, error_callback)
+    
+    def _handle_container_remove_result(self, result, volume_name, callback, error_callback):
+        """Handle the result of container removal during launch.
         
         Args:
-            result: The result tuple (stdout, stderr, return_code)
-            callback: The success callback
-            error_callback: The error callback
+            result: Tuple of (stdout, stderr, return_code) from remove command
+            volume_name: Volume name to mount
+            callback: Success callback
+            error_callback: Error callback
         """
         stdout, stderr, return_code = result
         
         if return_code != 0:
             if error_callback:
-                error_callback(f"Failed to check container status: {stderr}")
+                error_callback(f"Failed to remove existing container: {stderr}")
             return
             
-        if stdout.strip():  # Container is already running
-            logging.info(f"Container {self.container_name} is already running")
-            if callback:
-                callback(("Container already running", "", 0))
-        else:  # Container exists but is not running, start it
-            logging.info(f"Starting existing container {self.container_name}")
-            start_command = ['docker', 'start', self.container_name]
-            self._execute_direct_threaded(start_command, callback, error_callback)
+        # Container was removed successfully, now launch a new one
+        launch_command = self.get_launch_command(volume_name)
+        self._execute_direct_threaded(launch_command, callback, error_callback)
 
     def stop_container_threaded(self, container_name: str, callback, error_callback) -> None:
         """Stop a container in a background thread.
