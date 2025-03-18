@@ -7,7 +7,7 @@ FULL_DEBUG = True
 # URLs
 # ============================================================================
 # GITHUB_API_URL = 'https://api.github.com/repos/Ratio1/edge_node_launcher/releases/latest' #FIXME
-GITHUB_API_URL = 'https://api.github.com/repos/vitalii-t12/edge_node_launcher/releases/latest'
+GITHUB_API_URL = 'https://api.github.com/repos/vitalii-t12/edge_node_launcher_private/releases/latest'
 
 # ============================================================================
 # DIRECTORY AND FILE CONSTANTS

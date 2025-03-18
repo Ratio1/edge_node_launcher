@@ -26,7 +26,7 @@ class _UpdaterMixin:
       'Linux_Ubuntu_24.04': next(asset['browser_download_url'] for asset in assets if 'Ubuntu-24.04' in asset['name']),
       'Linux_Ubuntu_22.04': next(asset['browser_download_url'] for asset in assets if 'Ubuntu-22.04' in asset['name']),
       'Linux_Ubuntu_20.04': next(asset['browser_download_url'] for asset in assets if 'Ubuntu-20.04' in asset['name']),
-      'Darwin': next(asset['browser_download_url'] for asset in assets if 'macOS' in asset['name'] and '.zip' in asset['name']),
+      'Darwin': next(asset['browser_download_url'] for asset in assets if 'OSX' in asset['name'] and '.zip' in asset['name']),
     }
     return latest_version, download_urls
 

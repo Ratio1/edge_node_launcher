@@ -316,17 +316,6 @@ jobs:
           repo_name: ${{ github.repository }}
           overwrite: true
 
-      # Upload Windows zipped EXE to release
-      - name: Upload Windows zipped EXE to release
-        if: runner.os == 'Windows'
-        uses: svenstaro/upload-release-action@master
-        with:
-          file: dist/EdgeNodeLauncher-v${{ env.VERSION }}-Windows.exe.zip
-          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-Windows_exe.zip
-          tag: ${{ env.VERSION }}
-          repo_name: ${{ github.repository }}
-          overwrite: true
-
       # Upload Windows zipped MSI to release
       - name: Upload Windows zipped MSI to release
         if: runner.os == 'Windows'
@@ -334,17 +323,6 @@ jobs:
         with:
           file: dist/EdgeNodeLauncher-v${{ env.VERSION }}-Windows.msi.zip
           asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-Windows_msi.zip
-          tag: ${{ env.VERSION }}
-          repo_name: ${{ github.repository }}
-          overwrite: true
-
-      # Upload Windows zipped files to release
-      - name: Upload Windows zipped files to release
-        if: runner.os == 'Windows'
-        uses: svenstaro/upload-release-action@master
-        with:
-          file: dist/EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip
-          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip
           tag: ${{ env.VERSION }}
           repo_name: ${{ github.repository }}
           overwrite: true
@@ -357,28 +335,6 @@ jobs:
           file_glob: true
           file: dist/EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.*Image
           asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.AppImage
-          tag: ${{ env.VERSION }}
-          repo_name: ${{ github.repository }}
-          overwrite: true
-
-      # Upload macOS app to release
-      - name: Upload macOS app to release
-        if: runner.os == 'macOS'
-        uses: svenstaro/upload-release-action@master
-        with:
-          file: dist/EdgeNodeLauncher.app
-          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-macOS.app
-          tag: ${{ env.VERSION }}
-          repo_name: ${{ github.repository }}
-          overwrite: true
-
-      # Upload macOS zipped app to release
-      - name: Upload macOS zipped app to release
-        if: runner.os == 'macOS'
-        uses: svenstaro/upload-release-action@master
-        with:
-          file: dist/EdgeNodeLauncher-v${{ env.VERSION }}-macOS.app.zip
-          asset_name: EdgeNodeLauncher-v${{ env.VERSION }}-macOS.app.zip
           tag: ${{ env.VERSION }}
           repo_name: ${{ github.repository }}
           overwrite: true
