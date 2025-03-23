@@ -237,8 +237,8 @@ jobs:
             dist/*.exe
             dist/*.msi
             dist/*
+          retention-days: 1
           if-no-files-found: error
-          retention-days: 7
 
   collect-artifacts:
     needs: build
@@ -340,39 +340,45 @@ jobs:
         with:
           name: EdgeNodeLauncher-v${{ env.VERSION }}-Windows.msi
           path: ./all-builds/EdgeNodeLauncher-WIN32/*.msi
+          retention-days: 1
           if-no-files-found: error
-          
+
       - name: Upload Windows EXE for easy download
         uses: actions/upload-artifact@v4
         with:
           name: EdgeNodeLauncher-v${{ env.VERSION }}-Windows.exe
           path: ./all-builds/EdgeNodeLauncher-WIN32/*.exe
+          retention-days: 1
           if-no-files-found: error
-          
+
       - name: Upload Ubuntu 24.04 Binary for easy download
         uses: actions/upload-artifact@v4
         with:
           name: EdgeNodeLauncher-v${{ env.VERSION }}-Ubuntu-24.04.AppImage
           path: ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-24.04/EdgeNodeLauncher
+          retention-days: 1
           if-no-files-found: error
-          
+
       - name: Upload Ubuntu 22.04 Binary for easy download
         uses: actions/upload-artifact@v4
         with:
           name: EdgeNodeLauncher-v${{ env.VERSION }}-Ubuntu-22.04.AppImage
           path: ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-22.04/EdgeNodeLauncher
+          retention-days: 1
           if-no-files-found: error
-          
+
       - name: Upload Ubuntu 20.04 Binary for easy download
         uses: actions/upload-artifact@v4
         with:
           name: EdgeNodeLauncher-v${{ env.VERSION }}-Ubuntu-20.04.AppImage
           path: ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-20.04/EdgeNodeLauncher
+          retention-days: 1
           if-no-files-found: error
-          
+
       - name: Upload macOS Binary for easy download
         uses: actions/upload-artifact@v4
         with:
           name: EdgeNodeLauncher-v${{ env.VERSION }}-macOS-arm64.app
           path: ./all-builds/EdgeNodeLauncher-OSX-arm64/EdgeNodeLauncher
+          retention-days: 1
           if-no-files-found: error
