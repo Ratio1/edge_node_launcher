@@ -358,9 +358,3 @@ jobs:
         run: |
           VERSION=$(cat ver.py | grep -o "'.*'" | tr -d "'")
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-
-      # For potential debugging
-      - name: List available artifacts
-        run: |
-          echo "This step only lists artifacts that were made available to download"
-          echo "VERSION: ${{ env.VERSION }}"
