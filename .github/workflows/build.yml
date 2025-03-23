@@ -33,16 +33,25 @@ jobs:
       - name: Check version in ver.py
         id: check-version
         run: |
-          CURRENT_VERSION=$(cat ver.py | grep -o "'.*'")
-          echo "Current version is $CURRENT_VERSION"
+          # Get version with quotes
+          CURRENT_VERSION_WITH_QUOTES=$(cat ver.py | grep -o "'.*'")
+          echo "Current version with quotes is $CURRENT_VERSION_WITH_QUOTES"
+          
+          # Strip quotes for comparison
+          CURRENT_VERSION=$(echo $CURRENT_VERSION_WITH_QUOTES | tr -d "'")
+          echo "Current version without quotes is $CURRENT_VERSION"
+          
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
 
           if [ "$CURRENT_VERSION" == "$LATEST_TAG" ]; then
-            echo "Version $CURRENT_VERSION has not been incremented vs already released $LATEST_TAG. Build will be cancelled."
-            echo "::set-output name=should-run::false"
+            echo "Version $CURRENT_VERSION has not been incremented vs already released $LATEST_TAG."
+            echo "should-run=false" >> $GITHUB_OUTPUT
+            echo "Build failed: Version in ver.py ($CURRENT_VERSION) has not been updated from the latest release ($LATEST_TAG). Please increment the version." >> $GITHUB_STEP_SUMMARY
+            echo "::error title=Version Not Updated::Version in ver.py ($CURRENT_VERSION) has not been updated from the latest release ($LATEST_TAG). Please increment the version."
             exit 1
           else
             echo "Current version $CURRENT_VERSION differs from latest tag $LATEST_TAG. Build will continue."
-            echo "::set-output name=should-run::true"
+            echo "should-run=true" >> $GITHUB_OUTPUT
           fi
 
   build:
