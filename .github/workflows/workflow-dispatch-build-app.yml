@@ -65,20 +65,6 @@ jobs:
             name: EdgeNodeLauncher-LINUX_Ubuntu-24.04
             platformDependencies: sudo apt-get update && sudo apt install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
 
-          - os: ubuntu-22.04
-            build: |
-              chmod +x build_scripts/unix_build.sh
-              ./build_scripts/unix_build.sh
-            name: EdgeNodeLauncher-LINUX_Ubuntu-22.04
-            platformDependencies: sudo apt-get update && sudo apt install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
-
-          - os: ubuntu-20.04
-            build: |
-              chmod +x build_scripts/unix_build.sh
-              ./build_scripts/unix_build.sh
-            name: EdgeNodeLauncher-LINUX_Ubuntu-20.04
-            platformDependencies: sudo apt-get update && sudo apt-get install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
-
           - os: macos-latest
             build: |
               chmod +x build_scripts/unix_build.sh
@@ -284,101 +270,8 @@ jobs:
           name: EdgeNodeLauncher-LINUX_Ubuntu-24.04-v${{ env.VERSION }}-${{ github.sha }}
           path: ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-24.04
 
-      - name: Download Ubuntu 22.04 build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: EdgeNodeLauncher-LINUX_Ubuntu-22.04-v${{ env.VERSION }}-${{ github.sha }}
-          path: ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-22.04
-
-      - name: Download Ubuntu 20.04 build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: EdgeNodeLauncher-LINUX_Ubuntu-20.04-v${{ env.VERSION }}-${{ github.sha }}
-          path: ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-20.04
-
       - name: Download macOS build artifacts
         uses: actions/download-artifact@v4
         with:
           name: EdgeNodeLauncher-OSX-arm64-v${{ env.VERSION }}-${{ github.sha }}
           path: ./all-builds/EdgeNodeLauncher-OSX-arm64
-
-      # Debug: List all downloaded artifacts contents
-      - name: List all downloaded artifacts
-        run: |
-          echo "======== AVAILABLE ARTIFACTS ========"
-          echo "Windows artifacts (EdgeNodeLauncher-WIN32):"
-          find ./all-builds/EdgeNodeLauncher-WIN32 -type f -name "*.exe" -o -name "*.msi" | sort
-          echo ""
-          
-          echo "Ubuntu 24.04 artifacts:"
-          find ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-24.04 -type f | sort
-          echo ""
-          
-          echo "Ubuntu 22.04 artifacts:"
-          find ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-22.04 -type f | sort
-          echo ""
-          
-          echo "Ubuntu 20.04 artifacts:"
-          find ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-20.04 -type f | sort
-          echo ""
-          
-          echo "macOS artifacts:"
-          find ./all-builds/EdgeNodeLauncher-OSX-arm64 -type f | sort
-          echo ""
-          
-          echo "======== ARTIFACTS SUMMARY ========"
-          echo "Windows MSI: $(find ./all-builds/EdgeNodeLauncher-WIN32 -name "*.msi" | wc -l) files"
-          echo "Windows EXE: $(find ./all-builds/EdgeNodeLauncher-WIN32 -name "*.exe" | wc -l) files"
-          echo "Ubuntu 24.04: $(find ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-24.04 -type f | wc -l) files"
-          echo "Ubuntu 22.04: $(find ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-22.04 -type f | wc -l) files"
-          echo "Ubuntu 20.04: $(find ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-20.04 -type f | wc -l) files"
-          echo "macOS: $(find ./all-builds/EdgeNodeLauncher-OSX-arm64 -type f | wc -l) files"
-
-      # Optional: Upload the artifacts again with more user-friendly names for easier downloading
-      - name: Upload Windows MSI for easy download
-        uses: actions/upload-artifact@v4
-        with:
-          name: EdgeNodeLauncher-v${{ env.VERSION }}-Windows.msi
-          path: ./all-builds/EdgeNodeLauncher-WIN32/*.msi
-          retention-days: 1
-          if-no-files-found: error
-
-      - name: Upload Windows EXE for easy download
-        uses: actions/upload-artifact@v4
-        with:
-          name: EdgeNodeLauncher-v${{ env.VERSION }}-Windows.exe
-          path: ./all-builds/EdgeNodeLauncher-WIN32/*.exe
-          retention-days: 1
-          if-no-files-found: error
-
-      - name: Upload Ubuntu 24.04 Binary for easy download
-        uses: actions/upload-artifact@v4
-        with:
-          name: EdgeNodeLauncher-v${{ env.VERSION }}-Ubuntu-24.04.AppImage
-          path: ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-24.04/EdgeNodeLauncher
-          retention-days: 1
-          if-no-files-found: error
-
-      - name: Upload Ubuntu 22.04 Binary for easy download
-        uses: actions/upload-artifact@v4
-        with:
-          name: EdgeNodeLauncher-v${{ env.VERSION }}-Ubuntu-22.04.AppImage
-          path: ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-22.04/EdgeNodeLauncher
-          retention-days: 1
-          if-no-files-found: error
-
-      - name: Upload Ubuntu 20.04 Binary for easy download
-        uses: actions/upload-artifact@v4
-        with:
-          name: EdgeNodeLauncher-v${{ env.VERSION }}-Ubuntu-20.04.AppImage
-          path: ./all-builds/EdgeNodeLauncher-LINUX_Ubuntu-20.04/EdgeNodeLauncher
-          retention-days: 1
-          if-no-files-found: error
-
-      - name: Upload macOS Binary for easy download
-        uses: actions/upload-artifact@v4
-        with:
-          name: EdgeNodeLauncher-v${{ env.VERSION }}-macOS-arm64.app
-          path: ./all-builds/EdgeNodeLauncher-OSX-arm64/EdgeNodeLauncher
-          retention-days: 1
-          if-no-files-found: error
