@@ -66,26 +66,12 @@ jobs:
             name: WIN32
             platformDependencies: ""
 
-          - os: ubuntu-24.04
-            build: |
-              chmod +x build_scripts/unix_build.sh
-              ./build_scripts/unix_build.sh
-            name: LINUX_Ubuntu-24.04
-            platformDependencies: sudo apt-get update && sudo apt install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
-
           - os: ubuntu-22.04
             build: |
               chmod +x build_scripts/unix_build.sh
               ./build_scripts/unix_build.sh
             name: LINUX_Ubuntu-22.04
             platformDependencies: sudo apt-get update && sudo apt install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
-
-          - os: ubuntu-20.04
-            build: |
-              chmod +x build_scripts/unix_build.sh
-              ./build_scripts/unix_build.sh
-            name: LINUX_Ubuntu-20.04
-            platformDependencies: sudo apt-get update && sudo apt-get install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
 
           - os: macos-latest
             build: |
