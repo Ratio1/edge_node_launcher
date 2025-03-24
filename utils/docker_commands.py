@@ -338,7 +338,7 @@ class DockerDirectCommandThread(QThread):
             logging.info(f"Executing direct command: {' '.join(full_command)}")
             
             # Use a longer timeout for remote commands
-            timeout = 20 if self.remote_ssh_command else 10
+            timeout = REMOTE_TIMEOUT if self.remote_ssh_command else DEFAULT_TIMEOUT
             
             try:
                 if os.name == 'nt':
@@ -570,10 +570,21 @@ class DockerCommandHandler:
         Returns:
             list: The Docker command as a list of strings
         """
+        # Check for GPU support
+        use_gpu = self.check_nvidia_gpu_available()
+        
         # Base command with container name
         command = [
             'docker', 'run'
         ]
+        
+        # Add GPU support if available
+        if use_gpu:
+            command.append('--gpus=all')
+            logging.info('Using GPU for Docker container')
+        else:
+            logging.info('Not using GPU for Docker container - nvidia-smi not available')
+            
         if platform.machine() in ['aarch64', 'arm64']:
             command += ['--platform', 'linux/amd64']
         command += [
@@ -1019,3 +1030,42 @@ class DockerCommandHandler:
         except Exception as e:
             logging.error(f"Error in stop_container_threaded: {str(e)}")
             error_callback(f"Error stopping container: {str(e)}")
+
+    def check_nvidia_gpu_available(self):
+        """Check if NVIDIA GPU is available on the system.
+        
+        Returns:
+            bool: True if NVIDIA GPU is available
+        """
+        # Simple check first - if nvidia-smi doesn't exist, don't even try to run it
+        try:
+            # Use 'which' on Unix or 'where' on Windows to check if nvidia-smi exists
+            with open(os.devnull, 'w') as devnull:
+                if os.name == 'nt':  # Windows
+                    subprocess.check_call(['where', 'nvidia-smi'], stdout=devnull, stderr=devnull)
+                else:  # Unix-like
+                    subprocess.check_call(['which', 'nvidia-smi'], stdout=devnull, stderr=devnull)
+        except subprocess.CalledProcessError:
+            # Command exists but failed for other reasons
+            return False
+        except Exception:
+            # Command doesn't exist or other error
+            return False
+            
+        # If we got here, nvidia-smi exists, so try to run it
+        try:
+            if os.name == 'nt':
+                output = subprocess.check_output(['nvidia-smi', '-L'], stderr=subprocess.STDOUT, universal_newlines=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            else:
+                output = subprocess.check_output(['nvidia-smi', '-L'], stderr=subprocess.STDOUT, universal_newlines=True)
+            
+            result = 'GPU' in output
+            
+            if self._debug_mode:
+                clean_output = output.strip().replace('\n', ' ')
+                print(f'NVIDIA GPU available: {result} ({clean_output})')
+                
+            return result
+        except Exception:
+            # Any error during execution means no GPU
+            return False
