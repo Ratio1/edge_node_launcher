@@ -21,6 +21,11 @@ from utils.const import DOCKER_VOLUME_PATH
 DOCKER_IMAGE = "ratio1/edge_node:mainnet"
 DOCKER_TAG = "latest"
 
+# Timeout configurations
+DEFAULT_TIMEOUT = 90  # Default timeout for commands in seconds
+REMOTE_TIMEOUT = 120   # Extended timeout for remote commands in seconds 
+THREAD_JOIN_TIMEOUT = 2  # Timeout for thread joining in seconds
+
 @dataclass
 class ContainerInfo:
     """Container information storage class"""
@@ -136,7 +141,7 @@ class DockerCommandThread(QThread):
                 logging.info(f"With input data: {self.input_data[:100]}{'...' if len(self.input_data) > 100 else ''}")
 
             # Use a longer timeout for remote commands
-            timeout = 20 if self.remote_ssh_command else 10  # Increased timeout for remote commands
+            timeout = REMOTE_TIMEOUT if self.remote_ssh_command else DEFAULT_TIMEOUT  # Increased timeout for remote commands
 
             try:
                 if os.name == 'nt':
@@ -252,8 +257,8 @@ class DockerStreamingCommandThread(QThread):
                 return_code = self.process.wait()
                 
                 # Wait for threads to finish reading
-                stdout_thread.join(timeout=2)
-                stderr_thread.join(timeout=2)
+                stdout_thread.join(timeout=THREAD_JOIN_TIMEOUT)
+                stderr_thread.join(timeout=THREAD_JOIN_TIMEOUT)
                 
                 if is_docker_pull:
                     logging.info(f"Docker pull command completed with return code: {return_code}")
