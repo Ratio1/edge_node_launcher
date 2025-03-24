@@ -33,16 +33,25 @@ jobs:
       - name: Check version in ver.py
         id: check-version
         run: |
-          CURRENT_VERSION=$(cat ver.py | grep -o "'.*'")
-          echo "Current version is $CURRENT_VERSION"
+          # Get version with quotes
+          CURRENT_VERSION_WITH_QUOTES=$(cat ver.py | grep -o "'.*'")
+          echo "Current version with quotes is $CURRENT_VERSION_WITH_QUOTES"
+          
+          # Strip quotes for comparison
+          CURRENT_VERSION=$(echo $CURRENT_VERSION_WITH_QUOTES | tr -d "'")
+          echo "Current version without quotes is $CURRENT_VERSION"
+          
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
 
           if [ "$CURRENT_VERSION" == "$LATEST_TAG" ]; then
-            echo "Version $CURRENT_VERSION has not been incremented vs already released $LATEST_TAG. Build will be cancelled."
-            echo "::set-output name=should-run::false"
+            echo "Version $CURRENT_VERSION has not been incremented vs already released $LATEST_TAG."
+            echo "should-run=false" >> $GITHUB_OUTPUT
+            echo "Build failed: Version in ver.py ($CURRENT_VERSION) has not been updated from the latest release ($LATEST_TAG). Please increment the version." >> $GITHUB_STEP_SUMMARY
+            echo "::error title=Version Not Updated::Version in ver.py ($CURRENT_VERSION) has not been updated from the latest release ($LATEST_TAG). Please increment the version."
             exit 1
           else
             echo "Current version $CURRENT_VERSION differs from latest tag $LATEST_TAG. Build will continue."
-            echo "::set-output name=should-run::true"
+            echo "should-run=true" >> $GITHUB_OUTPUT
           fi
 
   build:
@@ -57,26 +66,12 @@ jobs:
             name: WIN32
             platformDependencies: ""
 
-          - os: ubuntu-24.04
-            build: |
-              chmod +x build_scripts/unix_build.sh
-              ./build_scripts/unix_build.sh
-            name: LINUX_Ubuntu-24.04
-            platformDependencies: sudo apt-get update && sudo apt install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
-
           - os: ubuntu-22.04
             build: |
               chmod +x build_scripts/unix_build.sh
               ./build_scripts/unix_build.sh
             name: LINUX_Ubuntu-22.04
             platformDependencies: sudo apt-get update && sudo apt install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
-
-          - os: ubuntu-20.04
-            build: |
-              chmod +x build_scripts/unix_build.sh
-              ./build_scripts/unix_build.sh
-            name: LINUX_Ubuntu-20.04
-            platformDependencies: sudo apt-get update && sudo apt-get install -y '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev --fix-missing
 
           - os: macos-latest
             build: |
@@ -285,15 +280,6 @@ jobs:
           zip -r EdgeNodeLauncher-v${{ env.VERSION }}-${{ matrix.name }}.zip EdgeNodeLauncher.app
           cd ..
 
-      # Upload artifacts
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: EdgeNodeLauncher-${{ matrix.name }}-v${{ env.VERSION }}
-          path: |
-            dist/EdgeNodeLauncher*
-          overwrite: true
-
       # Upload to release - Windows EXE
       - name: Upload Windows EXE to release
         if: runner.os == 'Windows'
@@ -372,9 +358,3 @@ jobs:
         run: |
           VERSION=$(cat ver.py | grep -o "'.*'" | tr -d "'")
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-
-      # For potential debugging
-      - name: List available artifacts
-        run: |
-          echo "This step only lists artifacts that were made available to download"
-          echo "VERSION: ${{ env.VERSION }}"

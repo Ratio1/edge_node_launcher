@@ -1,0 +1,91 @@
+name: Cleanup Old Releases
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Runs daily at midnight
+  workflow_dispatch:
+
+# Add permissions block at the workflow level
+permissions:
+  contents: write    # Required for deleting releases
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    name: Cleanup Old Releases
+
+    steps:
+      - name: Get releases list
+        id: releases-list
+        uses: actions/github-script@v6
+        with:
+          script: |
+            // List all releases for the repository
+            const releases = await github.rest.repos.listReleases({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            });
+            
+            console.log(`Found ${releases.data.length} releases in total`);
+            
+            // Keep only the 10 most recent releases, delete all others
+            const releasesToDelete = releases.data
+              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+              .slice(10);
+            
+            console.log(`Will delete ${releasesToDelete.length} releases`);
+            
+            // Set output for the next step
+            core.setOutput('releasesToDeleteJson', JSON.stringify(releasesToDelete.map(r => ({
+              id: r.id,
+              name: r.name,
+              tag_name: r.tag_name,
+              created_at: r.created_at
+            }))));
+            
+            return releasesToDelete.length;
+
+      - name: Delete old releases
+        if: steps.releases-list.outputs.releasesToDeleteJson != '[]'
+        uses: actions/github-script@v6
+        env:
+          RELEASES_TO_DELETE: ${{ steps.releases-list.outputs.releasesToDeleteJson }}
+        with:
+          script: |
+            // Get the releases to delete from the previous step's output
+            const releasesToDeleteJson = process.env.RELEASES_TO_DELETE;
+            if (!releasesToDeleteJson || releasesToDeleteJson === '[]') {
+              console.log('No releases to delete');
+              return;
+            }
+            
+            const releasesToDelete = JSON.parse(releasesToDeleteJson);
+            
+            console.log('Deleting the following releases:');
+            for (const release of releasesToDelete) {
+              console.log(`- ${release.name || release.tag_name} (created at ${release.created_at})`);
+              try {
+                await github.rest.repos.deleteRelease({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  release_id: release.id
+                });
+                console.log(`  Successfully deleted release ${release.id} (${release.name || release.tag_name})`);
+                
+                // Try to delete the tag as well
+                try {
+                  await github.rest.git.deleteRef({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    ref: `tags/${release.tag_name}`
+                  });
+                  console.log(`  Successfully deleted tag ${release.tag_name}`);
+                } catch (tagError) {
+                  console.log(`  Note: Could not delete tag ${release.tag_name}: ${tagError.message}`);
+                }
+              } catch (error) {
+                console.log(`  Failed to delete release ${release.id} (${release.name || release.tag_name}): ${error.message}`);
+              }
+            }
+
