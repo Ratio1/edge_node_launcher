@@ -21,6 +21,11 @@ from utils.const import DOCKER_VOLUME_PATH
 DOCKER_IMAGE = "ratio1/edge_node:mainnet"
 DOCKER_TAG = "latest"
 
+# Timeout configurations
+DEFAULT_TIMEOUT = 90  # Default timeout for commands in seconds
+REMOTE_TIMEOUT = 120   # Extended timeout for remote commands in seconds 
+THREAD_JOIN_TIMEOUT = 2  # Timeout for thread joining in seconds
+
 @dataclass
 class ContainerInfo:
     """Container information storage class"""
@@ -136,7 +141,7 @@ class DockerCommandThread(QThread):
                 logging.info(f"With input data: {self.input_data[:100]}{'...' if len(self.input_data) > 100 else ''}")
 
             # Use a longer timeout for remote commands
-            timeout = 20 if self.remote_ssh_command else 10  # Increased timeout for remote commands
+            timeout = REMOTE_TIMEOUT if self.remote_ssh_command else DEFAULT_TIMEOUT  # Increased timeout for remote commands
 
             try:
                 if os.name == 'nt':
@@ -252,8 +257,8 @@ class DockerStreamingCommandThread(QThread):
                 return_code = self.process.wait()
                 
                 # Wait for threads to finish reading
-                stdout_thread.join(timeout=2)
-                stderr_thread.join(timeout=2)
+                stdout_thread.join(timeout=THREAD_JOIN_TIMEOUT)
+                stderr_thread.join(timeout=THREAD_JOIN_TIMEOUT)
                 
                 if is_docker_pull:
                     logging.info(f"Docker pull command completed with return code: {return_code}")
@@ -338,7 +343,7 @@ class DockerDirectCommandThread(QThread):
             logging.info(f"Executing direct command: {' '.join(full_command)}")
             
             # Use a longer timeout for remote commands
-            timeout = 20 if self.remote_ssh_command else 10
+            timeout = REMOTE_TIMEOUT if self.remote_ssh_command else DEFAULT_TIMEOUT
             
             try:
                 if os.name == 'nt':
@@ -570,10 +575,21 @@ class DockerCommandHandler:
         Returns:
             list: The Docker command as a list of strings
         """
+        # Check for GPU support
+        use_gpu = self.check_nvidia_gpu_available()
+        
         # Base command with container name
         command = [
             'docker', 'run'
         ]
+        
+        # Add GPU support if available
+        if use_gpu:
+            command.append('--gpus=all')
+            logging.info('Using GPU for Docker container')
+        else:
+            logging.info('Not using GPU for Docker container - nvidia-smi not available')
+            
         if platform.machine() in ['aarch64', 'arm64']:
             command += ['--platform', 'linux/amd64']
         command += [
@@ -1019,3 +1035,42 @@ class DockerCommandHandler:
         except Exception as e:
             logging.error(f"Error in stop_container_threaded: {str(e)}")
             error_callback(f"Error stopping container: {str(e)}")
+
+    def check_nvidia_gpu_available(self):
+        """Check if NVIDIA GPU is available on the system.
+        
+        Returns:
+            bool: True if NVIDIA GPU is available
+        """
+        # Simple check first - if nvidia-smi doesn't exist, don't even try to run it
+        try:
+            # Use 'which' on Unix or 'where' on Windows to check if nvidia-smi exists
+            with open(os.devnull, 'w') as devnull:
+                if platform.system() == 'Windows':
+                    subprocess.check_call(['where', 'nvidia-smi'], stdout=devnull, stderr=devnull)
+                else:  # Unix-like systems (Linux, macOS)
+                    subprocess.check_call(['which', 'nvidia-smi'], stdout=devnull, stderr=devnull)
+        except subprocess.CalledProcessError:
+            # Command exists but failed for other reasons
+            return False
+        except Exception:
+            # Command doesn't exist or other error
+            return False
+            
+        # If we got here, nvidia-smi exists, so try to run it
+        try:
+            if platform.system() == 'Windows':
+                output = subprocess.check_output(['nvidia-smi', '-L'], stderr=subprocess.STDOUT, universal_newlines=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            else:
+                output = subprocess.check_output(['nvidia-smi', '-L'], stderr=subprocess.STDOUT, universal_newlines=True)
+            
+            result = 'GPU' in output
+            
+            if self._debug_mode:
+                clean_output = output.strip().replace('\n', ' ')
+                print(f'NVIDIA GPU available: {result} ({clean_output})')
+                
+            return result
+        except Exception:
+            # Any error during execution means no GPU
+            return False
