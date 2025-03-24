@@ -1041,9 +1041,9 @@ class DockerCommandHandler:
         try:
             # Use 'which' on Unix or 'where' on Windows to check if nvidia-smi exists
             with open(os.devnull, 'w') as devnull:
-                if os.name == 'nt':  # Windows
+                if platform.system() == 'Windows':
                     subprocess.check_call(['where', 'nvidia-smi'], stdout=devnull, stderr=devnull)
-                else:  # Unix-like
+                else:  # Unix-like systems (Linux, macOS)
                     subprocess.check_call(['which', 'nvidia-smi'], stdout=devnull, stderr=devnull)
         except subprocess.CalledProcessError:
             # Command exists but failed for other reasons
@@ -1054,7 +1054,7 @@ class DockerCommandHandler:
             
         # If we got here, nvidia-smi exists, so try to run it
         try:
-            if os.name == 'nt':
+            if platform.system() == 'Windows':
                 output = subprocess.check_output(['nvidia-smi', '-L'], stderr=subprocess.STDOUT, universal_newlines=True, creationflags=subprocess.CREATE_NO_WINDOW)
             else:
                 output = subprocess.check_output(['nvidia-smi', '-L'], stderr=subprocess.STDOUT, universal_newlines=True)
