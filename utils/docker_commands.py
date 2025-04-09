@@ -594,6 +594,7 @@ class DockerCommandHandler:
             command += ['--platform', 'linux/amd64']
         command += [
             '-d',  # Run in detached mode
+            '--privileged',  # Privileged mode
             '--name', self.container_name,  # Set container name
             '--restart', 'unless-stopped',  # Restart policy
         ]
