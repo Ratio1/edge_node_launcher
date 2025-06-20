@@ -592,6 +592,11 @@ class DockerCommandHandler:
             
         if platform.machine() in ['aarch64', 'arm64']:
             command += ['--platform', 'linux/amd64']
+            
+        # Add cgroupns=host for non-macOS platforms
+        if platform.system() != 'Darwin':
+            command += ['--cgroupns=host']
+            
         command += [
             '-d',  # Run in detached mode
             '--privileged',  # Privileged mode
