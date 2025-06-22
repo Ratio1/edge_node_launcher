@@ -214,4 +214,153 @@ class _SystemResourcesMixin:
     def clear_resources_cache(self):
         """Clear the cached resources data to force fresh data on next call."""
         self._cached_resources = None
-        self._last_resources_check = 0 
+        self._last_resources_check = 0
+
+    def get_available_ram_bytes(self):
+        """Get available RAM in bytes.
+        
+        Returns:
+            int or str: Available RAM in bytes, or 'N/A' if not available
+        """
+        resources = self.get_system_resources()
+        return resources['memory']['available']
+
+    def get_total_ram_bytes(self):
+        """Get total RAM in bytes.
+        
+        Returns:
+            int or str: Total RAM in bytes, or 'N/A' if not available
+        """
+        resources = self.get_system_resources()
+        return resources['memory']['total']
+
+    def bytes_to_gb(self, bytes_value):
+        """Convert bytes to GB.
+        
+        Args:
+            bytes_value: Number of bytes
+            
+        Returns:
+            float: Value in GB
+        """
+        if bytes_value == 'N/A' or bytes_value is None:
+            return 'N/A'
+        try:
+            return float(bytes_value) / (1024 ** 3)
+        except:
+            return 'N/A'
+
+    def gb_to_bytes(self, gb_value):
+        """Convert GB to bytes.
+        
+        Args:
+            gb_value: Value in GB
+            
+        Returns:
+            int: Value in bytes
+        """
+        try:
+            return int(float(gb_value) * (1024 ** 3))
+        except:
+            return 0
+
+    def calculate_available_ram_for_nodes(self, existing_node_count=0):
+        """Calculate available RAM after accounting for existing nodes.
+        
+        Args:
+            existing_node_count (int): Number of existing nodes
+            
+        Returns:
+            dict: Dictionary with 'available_gb', 'used_by_nodes_gb', 'system_available_gb'
+        """
+        from utils.const import MIN_NODE_RAM_GB
+        
+        total_ram_bytes = self.get_total_ram_bytes()
+        available_ram_bytes = self.get_available_ram_bytes()
+        
+        if total_ram_bytes == 'N/A' or available_ram_bytes == 'N/A':
+            return {
+                'available_gb': 'N/A',
+                'used_by_nodes_gb': 'N/A',
+                'system_available_gb': 'N/A',
+                'can_add_node': False,
+                'error': 'Unable to determine system RAM'
+            }
+        
+        total_ram_gb = self.bytes_to_gb(total_ram_bytes)
+        available_ram_gb = self.bytes_to_gb(available_ram_bytes)
+        used_by_nodes_gb = existing_node_count * MIN_NODE_RAM_GB
+        
+        # Calculate maximum nodes system can support based on total RAM
+        # Reserve some RAM for the system (let's say 4 GB minimum)
+        system_reserved_gb = 4.0
+        max_nodes_by_total_ram = int((total_ram_gb - system_reserved_gb) // MIN_NODE_RAM_GB)
+        
+        # Check both constraints:
+        # 1. Available RAM must be sufficient for one more node
+        # 2. Total capacity must not be exceeded
+        can_add_by_available = available_ram_gb >= MIN_NODE_RAM_GB
+        can_add_by_total = existing_node_count < max_nodes_by_total_ram
+        
+        return {
+            'total_ram_gb': total_ram_gb,
+            'available_gb': available_ram_gb,
+            'used_by_nodes_gb': used_by_nodes_gb,
+            'system_available_gb': available_ram_gb,
+            'max_nodes_supported': max_nodes_by_total_ram,
+            'current_node_count': existing_node_count,
+            'can_add_by_available': can_add_by_available,
+            'can_add_by_total': can_add_by_total,
+            'can_add_node': can_add_by_available and can_add_by_total,
+            'min_required_gb': MIN_NODE_RAM_GB,
+            'system_reserved_gb': system_reserved_gb
+        }
+
+    def check_ram_for_new_node(self, existing_node_count=0):
+        """Check if there's enough RAM to add a new node.
+        
+        Args:
+            existing_node_count (int): Number of existing nodes
+            
+        Returns:
+            dict: Dictionary with check results and details
+        """
+        ram_info = self.calculate_available_ram_for_nodes(existing_node_count)
+        
+        if 'error' in ram_info:
+            return ram_info
+        
+        can_add = ram_info['can_add_node']
+        
+        # Return all the detailed information from ram_info plus the message
+        result = ram_info.copy()
+        result['message'] = self._get_ram_check_message(ram_info, can_add)
+        result['required_gb'] = ram_info['min_required_gb']  # Add this for backward compatibility
+        
+        return result
+
+    def _get_ram_check_message(self, ram_info, can_add):
+        """Generate a user-friendly message about RAM availability.
+        
+        Args:
+            ram_info (dict): RAM information
+            can_add (bool): Whether a new node can be added
+            
+        Returns:
+            str: User-friendly message
+        """
+        if can_add:
+            return (f"Sufficient RAM available. Required: {ram_info['min_required_gb']} GB, "
+                   f"Available: {ram_info['available_gb']:.1f} GB")
+        else:
+            # Determine the specific reason for failure
+            if not ram_info['can_add_by_available']:
+                return (f"Insufficient RAM available. Required: {ram_info['min_required_gb']} GB, "
+                       f"Available: {ram_info['available_gb']:.1f} GB")
+            elif not ram_info['can_add_by_total']:
+                return (f"Maximum node capacity reached. System supports {ram_info['max_nodes_supported']} nodes "
+                       f"({ram_info['total_ram_gb']:.1f} GB total RAM - {ram_info['system_reserved_gb']} GB reserved), "
+                       f"currently running {ram_info['current_node_count']} nodes")
+            else:
+                return (f"Cannot add node. Required: {ram_info['min_required_gb']} GB, "
+                       f"Available: {ram_info['available_gb']:.1f} GB") 

@@ -35,6 +35,11 @@ DOCKER_IMAGE_AUTO_UPDATE_CHECK_INTERVAL = 300  # 5 minutes
 MAX_ALIAS_LENGTH = 15  # Maximum length for aliases (node name and authorized addresses)
 
 # ============================================================================
+# NODE REQUIREMENTS
+# ============================================================================
+MIN_NODE_RAM_GB = 16  # Minimum RAM requirement per node in GB
+
+# ============================================================================
 # UI TEXT CONSTANTS
 # ============================================================================
 # Window and titles
@@ -121,6 +126,12 @@ EDIT_ENV_FILE_DIALOG_TITLE = 'Edit .env File'
 RESET_NODE_CONFIRMATION_TEXT = 'Are you sure you want to reset this node?'
 ENTER_NODE_NAME_TEXT = 'Enter a friendly name for this node:'
 RESETTING_NODE_ADDRESS_TEXT = 'Resetting node address...'
+
+# RAM checking messages
+INSUFFICIENT_RAM_TITLE = 'Cannot Create Node'
+INSUFFICIENT_RAM_MESSAGE = 'Cannot create a new node due to RAM constraints.\n\n{reason}\n\nSystem Information:\n• Total RAM: {total_gb:.1f} GB\n• System Reserved: {reserved_gb} GB\n• Maximum Nodes Supported: {max_nodes}\n• Current Nodes: {current_nodes}\n\nEach node requires {min_ram_gb} GB of RAM.'
+RAM_CHECK_ERROR_TITLE = 'RAM Check Error'
+RAM_CHECK_ERROR_MESSAGE = 'Unable to determine available system RAM.\n\nWould you like to proceed anyway?'
 
 # Input placeholders
 ENTER_NODE_NAME_PLACEHOLDER = 'Enter node name'

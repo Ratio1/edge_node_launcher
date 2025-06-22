@@ -2105,7 +2105,48 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
 
   def show_add_node_dialog(self):
     """Show confirmation dialog for adding a new node."""
-    from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QHBoxLayout, QPushButton
+    from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QHBoxLayout, QPushButton, QMessageBox
+    from utils.const import (INSUFFICIENT_RAM_TITLE, INSUFFICIENT_RAM_MESSAGE, 
+                            RAM_CHECK_ERROR_TITLE, RAM_CHECK_ERROR_MESSAGE, MIN_NODE_RAM_GB)
+
+    # Check RAM before showing the dialog
+    existing_node_count = len(self.config_manager.get_all_containers())
+    ram_check = self.check_ram_for_new_node(existing_node_count)
+    
+    # If there's an error checking RAM, ask user if they want to proceed
+    if 'error' in ram_check:
+        reply = QMessageBox.question(
+            self, 
+            RAM_CHECK_ERROR_TITLE,
+            RAM_CHECK_ERROR_MESSAGE,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+    # If there's insufficient RAM, show error and return
+    elif not ram_check['can_add_node']:
+        # Determine the specific reason for the failure
+        if not ram_check['can_add_by_available']:
+            reason = f"Insufficient RAM available.\nRequired: {ram_check['required_gb']} GB\nAvailable: {ram_check['available_gb']:.1f} GB"
+        elif not ram_check['can_add_by_total']:
+            reason = f"Maximum node capacity reached.\nSystem can support {ram_check['max_nodes_supported']} nodes total."
+        else:
+            reason = f"Cannot create node due to RAM constraints."
+            
+        QMessageBox.warning(
+            self,
+            INSUFFICIENT_RAM_TITLE,
+            INSUFFICIENT_RAM_MESSAGE.format(
+                reason=reason,
+                total_gb=ram_check['total_ram_gb'],
+                reserved_gb=ram_check['system_reserved_gb'],
+                max_nodes=ram_check['max_nodes_supported'],
+                current_nodes=ram_check['current_node_count'],
+                min_ram_gb=MIN_NODE_RAM_GB
+            )
+        )
+        return
 
     # Generate the container name that would be used
     container_name = generate_container_name()
@@ -2118,8 +2159,19 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
 
     layout = QVBoxLayout()
 
-    # Add info text with more descriptive message
-    info_text = f"This action will create a new Edge Node. \n\nDo you want to proceed?"
+    # Add info text with more descriptive message including RAM info
+    if 'error' not in ram_check:
+        info_text = (f"This action will create a new Edge Node.\n\n"
+                    f"RAM Usage:\n"
+                    f"• Required: {ram_check['required_gb']} GB\n"
+                    f"• Available: {ram_check['available_gb']:.1f} GB\n"
+                    f"• Total RAM: {ram_check['total_ram_gb']:.1f} GB\n"
+                    f"• Current nodes: {existing_node_count}\n"
+                    f"• Max nodes supported: {ram_check['max_nodes_supported']}\n\n"
+                    f"Do you want to proceed?")
+    else:
+        info_text = f"This action will create a new Edge Node. \n\nDo you want to proceed?"
+    
     info_label = QLabel(info_text)
     info_label.setWordWrap(True)  # Enable word wrapping for better readability
     layout.addWidget(info_label)
