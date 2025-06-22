@@ -2531,7 +2531,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
         default_container = ContainerConfig(
             name="r1node",
             volume="r1vol",
-            node_alias="Default Node"
+            node_alias="r1node"
         )
         self.config_manager.add_container(default_container)
         containers = [default_container]
