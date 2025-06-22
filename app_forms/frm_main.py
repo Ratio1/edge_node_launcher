@@ -5,15 +5,6 @@ import os
 import json
 import dataclasses
 import subprocess
-import shutil
-import multiprocessing
-
-# Try to import psutil, fall back to system commands if not available
-try:
-    import psutil
-    PSUTIL_AVAILABLE = True
-except ImportError:
-    PSUTIL_AVAILABLE = False
 
 from datetime import datetime, timedelta
 from time import time
@@ -74,6 +65,7 @@ from utils.const import *
 from utils.docker import _DockerUtilsMixin
 from utils.docker_commands import DockerCommandHandler
 from utils.updater import _UpdaterMixin
+from utils.system_resources import _SystemResourcesMixin
 from utils.docker_utils import get_volume_name, generate_container_name
 from utils.config_manager import ConfigManager, ContainerConfig
 
@@ -121,7 +113,7 @@ def log_with_color(message, color="gray"):
   print(f"{start_color}{message}{end_color}", flush=True)
   return
 
-class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
+class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourcesMixin):
   def __init__(self, app_icon=None):
     self.logView = None
     self.log_buffer = []
@@ -2816,151 +2808,20 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
     # Don't call _refresh_local_containers here to avoid circular dependency
     return
 
-  def get_system_resources(self):
-    """Get system resource information (memory, CPU, storage).
-    
-    Returns:
-        dict: Dictionary containing memory, cpu, and storage information
-    """
-    resources = {
-        'memory': {'available': 'N/A', 'total': 'N/A', 'percent': 'N/A'},
-        'cpu': {'count': 'N/A'},
-        'storage': {'free': 'N/A', 'total': 'N/A', 'percent': 'N/A'}
-    }
-    
-    try:
-        if PSUTIL_AVAILABLE:
-            # Get memory information
-            memory = psutil.virtual_memory()
-            resources['memory']['available'] = memory.available
-            resources['memory']['total'] = memory.total
-            resources['memory']['percent'] = memory.percent
-            
-            # Get CPU count
-            resources['cpu']['count'] = psutil.cpu_count(logical=True)
-            
-            # Get storage information for current directory
-            disk = psutil.disk_usage('/')  # Unix/Linux
-            if platform.system() == 'Windows':
-                disk = psutil.disk_usage('C:\\')
-            resources['storage']['free'] = disk.free
-            resources['storage']['total'] = disk.total
-            resources['storage']['percent'] = (disk.used / disk.total) * 100
-        else:
-            # Fallback methods when psutil is not available
-            
-            # CPU count fallback
-            try:
-                resources['cpu']['count'] = multiprocessing.cpu_count()
-            except:
-                resources['cpu']['count'] = 'N/A'
-            
-            # Memory fallback (Linux/Mac)
-            if platform.system() in ['Linux', 'Darwin']:
-                try:
-                    # Try to read /proc/meminfo on Linux
-                    if platform.system() == 'Linux' and os.path.exists('/proc/meminfo'):
-                        with open('/proc/meminfo', 'r') as f:
-                            meminfo = f.read()
-                        lines = meminfo.split('\n')
-                        for line in lines:
-                            if 'MemTotal:' in line:
-                                total_kb = int(line.split()[1])
-                                resources['memory']['total'] = total_kb * 1024
-                            elif 'MemAvailable:' in line:
-                                available_kb = int(line.split()[1])
-                                resources['memory']['available'] = available_kb * 1024
-                        
-                        if (resources['memory']['total'] != 'N/A' and 
-                            resources['memory']['available'] != 'N/A'):
-                            used = resources['memory']['total'] - resources['memory']['available']
-                            resources['memory']['percent'] = (used / resources['memory']['total']) * 100
-                except:
-                    pass
-            
-            # Storage fallback using shutil
-            try:
-                if platform.system() == 'Windows':
-                    path = 'C:\\'
-                else:
-                    path = '/'
-                total, used, free = shutil.disk_usage(path)
-                resources['storage']['free'] = free
-                resources['storage']['total'] = total
-                resources['storage']['percent'] = (used / total) * 100
-            except:
-                pass
-                
-    except Exception as e:
-        # If any error occurs, return N/A values
-        self.add_log(f"Error getting system resources: {str(e)}", debug=True)
-    
-    return resources
 
-  def format_bytes(self, bytes_value):
-    """Format bytes to human readable format.
-    
-    Args:
-        bytes_value: Number of bytes or 'N/A'
-        
-    Returns:
-        str: Formatted string like '8.2 GB' or 'N/A'
-    """
-    if bytes_value == 'N/A' or bytes_value is None:
-        return 'N/A'
-    
-    try:
-        bytes_value = float(bytes_value)
-        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
-            if bytes_value < 1024.0:
-                return f"{bytes_value:.1f} {unit}"
-            bytes_value /= 1024.0
-        return f"{bytes_value:.1f} PB"
-    except:
-        return 'N/A'
 
   def update_resources_display(self):
     """Update the system resources display with current information."""
     try:
-        resources = self.get_system_resources()
+        # Use the new mixin helper methods for cleaner, more maintainable code
+        memory_info = self.get_formatted_memory_info()
+        cpu_info = self.get_formatted_cpu_info()
+        storage_info = self.get_formatted_storage_info()
         
-        # Update memory display
-        if (resources['memory']['available'] != 'N/A' and 
-            resources['memory']['total'] != 'N/A'):
-            available_str = self.format_bytes(resources['memory']['available'])
-            total_str = self.format_bytes(resources['memory']['total'])
-            percent = resources['memory']['percent']
-            if percent != 'N/A':
-                memory_text = f"{MEMORY_LABEL} {available_str} / {total_str} ({percent:.1f}% used)"
-            else:
-                memory_text = f"{MEMORY_LABEL} {available_str} / {total_str}"
-        else:
-            memory_text = f"{MEMORY_LABEL} {MEMORY_NOT_AVAILABLE}"
-        
-        self.memoryDisplay.setText(memory_text)
-        
-        # Update VCPUs display
-        if resources['cpu']['count'] != 'N/A':
-            vcpus_text = f"{VCPUS_LABEL} {resources['cpu']['count']}"
-        else:
-            vcpus_text = f"{VCPUS_LABEL} {VCPUS_NOT_AVAILABLE}"
-        
-        self.vcpusDisplay.setText(vcpus_text)
-        
-        # Update storage display
-        if (resources['storage']['free'] != 'N/A' and 
-            resources['storage']['total'] != 'N/A'):
-            free_str = self.format_bytes(resources['storage']['free'])
-            total_str = self.format_bytes(resources['storage']['total'])
-            percent = resources['storage']['percent']
-            if percent != 'N/A':
-                storage_text = f"{STORAGE_LABEL} {free_str} / {total_str} ({percent:.1f}% used)"
-            else:
-                storage_text = f"{STORAGE_LABEL} {free_str} / {total_str}"
-        else:
-            storage_text = f"{STORAGE_LABEL} {STORAGE_NOT_AVAILABLE}"
-        
-        self.storageDisplay.setText(storage_text)
+        # Update displays
+        self.memoryDisplay.setText(f"{MEMORY_LABEL} {memory_info}")
+        self.vcpusDisplay.setText(f"{VCPUS_LABEL} {cpu_info}")
+        self.storageDisplay.setText(f"{STORAGE_LABEL} {storage_info}")
         
         self.add_log("Updated system resources display", debug=True)
         
