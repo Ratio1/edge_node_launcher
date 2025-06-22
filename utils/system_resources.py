@@ -265,55 +265,41 @@ class _SystemResourcesMixin:
             return 0
 
     def calculate_available_ram_for_nodes(self, existing_node_count=0):
-        """Calculate available RAM after accounting for existing nodes.
+        """Calculate maximum nodes based on total RAM capacity.
         
         Args:
             existing_node_count (int): Number of existing nodes
             
         Returns:
-            dict: Dictionary with 'available_gb', 'used_by_nodes_gb', 'system_available_gb'
+            dict: Dictionary with node capacity information
         """
         from utils.const import MIN_NODE_RAM_GB
         
         total_ram_bytes = self.get_total_ram_bytes()
-        available_ram_bytes = self.get_available_ram_bytes()
         
-        if total_ram_bytes == 'N/A' or available_ram_bytes == 'N/A':
+        if total_ram_bytes == 'N/A':
             return {
-                'available_gb': 'N/A',
-                'used_by_nodes_gb': 'N/A',
-                'system_available_gb': 'N/A',
                 'can_add_node': False,
                 'error': 'Unable to determine system RAM'
             }
         
         total_ram_gb = self.bytes_to_gb(total_ram_bytes)
-        available_ram_gb = self.bytes_to_gb(available_ram_bytes)
         used_by_nodes_gb = existing_node_count * MIN_NODE_RAM_GB
         
         # Calculate maximum nodes system can support based on total RAM
-        # Reserve some RAM for the system (let's say 4 GB minimum)
-        system_reserved_gb = 4.0
-        max_nodes_by_total_ram = int((total_ram_gb - system_reserved_gb) // MIN_NODE_RAM_GB)
+        # Simple formula: total RAM / RAM per node
+        max_nodes_supported = int(total_ram_gb // MIN_NODE_RAM_GB)
         
-        # Check both constraints:
-        # 1. Available RAM must be sufficient for one more node
-        # 2. Total capacity must not be exceeded
-        can_add_by_available = available_ram_gb >= MIN_NODE_RAM_GB
-        can_add_by_total = existing_node_count < max_nodes_by_total_ram
+        # Check if we can add another node
+        can_add_node = existing_node_count < max_nodes_supported
         
         return {
             'total_ram_gb': total_ram_gb,
-            'available_gb': available_ram_gb,
             'used_by_nodes_gb': used_by_nodes_gb,
-            'system_available_gb': available_ram_gb,
-            'max_nodes_supported': max_nodes_by_total_ram,
+            'max_nodes_supported': max_nodes_supported,
             'current_node_count': existing_node_count,
-            'can_add_by_available': can_add_by_available,
-            'can_add_by_total': can_add_by_total,
-            'can_add_node': can_add_by_available and can_add_by_total,
-            'min_required_gb': MIN_NODE_RAM_GB,
-            'system_reserved_gb': system_reserved_gb
+            'can_add_node': can_add_node,
+            'min_required_gb': MIN_NODE_RAM_GB
         }
 
     def check_ram_for_new_node(self, existing_node_count=0):
@@ -340,7 +326,7 @@ class _SystemResourcesMixin:
         return result
 
     def _get_ram_check_message(self, ram_info, can_add):
-        """Generate a user-friendly message about RAM availability.
+        """Generate a user-friendly message about RAM capacity.
         
         Args:
             ram_info (dict): RAM information
@@ -350,17 +336,10 @@ class _SystemResourcesMixin:
             str: User-friendly message
         """
         if can_add:
-            return (f"Sufficient RAM available. Required: {ram_info['min_required_gb']} GB, "
-                   f"Available: {ram_info['available_gb']:.1f} GB")
+            return (f"Node can be created. System supports {ram_info['max_nodes_supported']} nodes total "
+                   f"({ram_info['total_ram_gb']:.1f} GB ÷ {ram_info['min_required_gb']} GB per node), "
+                   f"currently running {ram_info['current_node_count']} nodes")
         else:
-            # Determine the specific reason for failure
-            if not ram_info['can_add_by_available']:
-                return (f"Insufficient RAM available. Required: {ram_info['min_required_gb']} GB, "
-                       f"Available: {ram_info['available_gb']:.1f} GB")
-            elif not ram_info['can_add_by_total']:
-                return (f"Maximum node capacity reached. System supports {ram_info['max_nodes_supported']} nodes "
-                       f"({ram_info['total_ram_gb']:.1f} GB total RAM - {ram_info['system_reserved_gb']} GB reserved), "
-                       f"currently running {ram_info['current_node_count']} nodes")
-            else:
-                return (f"Cannot add node. Required: {ram_info['min_required_gb']} GB, "
-                       f"Available: {ram_info['available_gb']:.1f} GB") 
+            return (f"Maximum node capacity reached. System supports {ram_info['max_nodes_supported']} nodes "
+                   f"({ram_info['total_ram_gb']:.1f} GB ÷ {ram_info['min_required_gb']} GB per node), "
+                   f"currently running {ram_info['current_node_count']} nodes") 

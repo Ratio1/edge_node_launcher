@@ -2126,21 +2126,11 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
             return
     # If there's insufficient RAM, show error and return
     elif not ram_check['can_add_node']:
-        # Determine the specific reason for the failure
-        if not ram_check['can_add_by_available']:
-            reason = f"Insufficient RAM available.\nRequired: {ram_check['required_gb']} GB\nAvailable: {ram_check['available_gb']:.1f} GB"
-        elif not ram_check['can_add_by_total']:
-            reason = f"Maximum node capacity reached.\nSystem can support {ram_check['max_nodes_supported']} nodes total."
-        else:
-            reason = f"Cannot create node due to RAM constraints."
-            
         QMessageBox.warning(
             self,
             INSUFFICIENT_RAM_TITLE,
             INSUFFICIENT_RAM_MESSAGE.format(
-                reason=reason,
                 total_gb=ram_check['total_ram_gb'],
-                reserved_gb=ram_check['system_reserved_gb'],
                 max_nodes=ram_check['max_nodes_supported'],
                 current_nodes=ram_check['current_node_count'],
                 min_ram_gb=MIN_NODE_RAM_GB
@@ -2162,12 +2152,11 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     # Add info text with more descriptive message including RAM info
     if 'error' not in ram_check:
         info_text = (f"This action will create a new Edge Node.\n\n"
-                    f"RAM Usage:\n"
-                    f"• Required: {ram_check['required_gb']} GB\n"
-                    f"• Available: {ram_check['available_gb']:.1f} GB\n"
+                    f"System Capacity:\n"
                     f"• Total RAM: {ram_check['total_ram_gb']:.1f} GB\n"
-                    f"• Current nodes: {existing_node_count}\n"
-                    f"• Max nodes supported: {ram_check['max_nodes_supported']}\n\n"
+                    f"• RAM per node: {ram_check['min_required_gb']} GB\n"
+                    f"• Max nodes supported: {ram_check['max_nodes_supported']}\n"
+                    f"• Current nodes: {existing_node_count}\n\n"
                     f"Do you want to proceed?")
     else:
         info_text = f"This action will create a new Edge Node. \n\nDo you want to proceed?"
