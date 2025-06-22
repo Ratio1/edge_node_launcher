@@ -560,18 +560,27 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     self.memoryDisplay = QLabel(MEMORY_LABEL + ' ' + MEMORY_NOT_AVAILABLE)
     self.memoryDisplay.setFont(QFont("Courier New"))
     self.memoryDisplay.setObjectName("resourcesBoxText")
+    self.memoryDisplay.setWordWrap(True)
+    self.memoryDisplay.setMaximumWidth(270)
+    self.memoryDisplay.setAlignment(Qt.AlignLeft | Qt.AlignTop)
     resources_box_layout.addWidget(self.memoryDisplay)
 
     # VCPUs display
     self.vcpusDisplay = QLabel(VCPUS_LABEL + ' ' + VCPUS_NOT_AVAILABLE)
     self.vcpusDisplay.setFont(QFont("Courier New"))
     self.vcpusDisplay.setObjectName("resourcesBoxText")
+    self.vcpusDisplay.setWordWrap(True)
+    self.vcpusDisplay.setMaximumWidth(270)
+    self.vcpusDisplay.setAlignment(Qt.AlignLeft | Qt.AlignTop)
     resources_box_layout.addWidget(self.vcpusDisplay)
 
     # Storage display
     self.storageDisplay = QLabel(STORAGE_LABEL + ' ' + STORAGE_NOT_AVAILABLE)
     self.storageDisplay.setFont(QFont("Courier New"))
     self.storageDisplay.setObjectName("resourcesBoxText")
+    self.storageDisplay.setWordWrap(True)
+    self.storageDisplay.setMaximumWidth(270)
+    self.storageDisplay.setAlignment(Qt.AlignLeft | Qt.AlignTop)
     resources_box_layout.addWidget(self.storageDisplay)
     
     resources_box.setLayout(resources_box_layout)

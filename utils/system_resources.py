@@ -45,7 +45,7 @@ class _SystemResourcesMixin:
         
         resources = {
             'memory': {'available': 'N/A', 'total': 'N/A', 'percent': 'N/A'},
-            'cpu': {'count': 'N/A'},
+            'cpu': {'count': 'N/A', 'usage': 'N/A'},
             'storage': {'free': 'N/A', 'total': 'N/A', 'percent': 'N/A'}
         }
         
@@ -57,8 +57,10 @@ class _SystemResourcesMixin:
                 resources['memory']['total'] = memory.total
                 resources['memory']['percent'] = memory.percent
                 
-                # Get CPU count
+                # Get CPU information
                 resources['cpu']['count'] = psutil.cpu_count(logical=True)
+                # Get CPU usage (1 second interval for accuracy)
+                resources['cpu']['usage'] = psutil.cpu_percent(interval=0.1)
                 
                 # Get storage information for current directory
                 disk = psutil.disk_usage('/')  # Unix/Linux
@@ -73,8 +75,11 @@ class _SystemResourcesMixin:
                 # CPU count fallback
                 try:
                     resources['cpu']['count'] = multiprocessing.cpu_count()
+                    # CPU usage fallback (not available without psutil)
+                    resources['cpu']['usage'] = 'N/A'
                 except:
                     resources['cpu']['count'] = 'N/A'
+                    resources['cpu']['usage'] = 'N/A'
                 
                 # Memory fallback (Linux/Mac)
                 if platform.system() in ['Linux', 'Darwin']:
@@ -170,12 +175,19 @@ class _SystemResourcesMixin:
         """Get formatted CPU information.
         
         Returns:
-            str: Formatted CPU string like "8"
+            str: Formatted CPU string like "8 cores (15.2% used)"
         """
         resources = self.get_system_resources()
         
-        if resources['cpu']['count'] != 'N/A':
-            return str(resources['cpu']['count'])
+        count = resources['cpu']['count']
+        usage = resources['cpu']['usage']
+        
+        if count != 'N/A' and usage != 'N/A':
+            return f"{count} cores ({usage:.1f}% used)"
+        elif count != 'N/A':
+            return f"{count} cores"
+        elif usage != 'N/A':
+            return f"{usage:.1f}% used"
         else:
             return 'N/A'
 

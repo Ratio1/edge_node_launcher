@@ -654,6 +654,7 @@ COMMON_STYLESHEET_TEMPLATE = """
     margin-right: 5px;
     padding: 8px;
     color: {info_box_text};
+    min-height: 60px;
   }}
   #resourcesBox QLabel {{
     color: {info_box_text};
@@ -661,12 +662,17 @@ COMMON_STYLESHEET_TEMPLATE = """
     font-size: 10pt;
     font-weight: {info_box_font_weight};
     margin: 2px;
+    padding: 2px 4px;
     background-color: transparent;
+    word-wrap: break-word;
+    max-width: 270px;
   }}
   #resourcesBoxText QLabel {{
     color: {info_box_text};
     background-color: transparent;
     font-weight: {info_box_font_weight};
+    word-wrap: break-word;
+    max-width: 270px;
   }}
   #myComboPopup {{
     background-color: #2e2e2e; 
