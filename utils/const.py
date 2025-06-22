@@ -61,6 +61,15 @@ EPOCH_LABEL = 'Epoch:'
 EPOCH_AVAIL_LABEL = 'Epochs avail:'
 NODE_VERSION_LABEL = 'Running ver:'
 
+# Resources box labels
+RESOURCES_BOX_TITLE = 'System Resources'
+MEMORY_LABEL = 'Memory:'
+VCPUS_LABEL = 'vCPUs:'
+STORAGE_LABEL = 'Storage:'
+MEMORY_NOT_AVAILABLE = 'N/A'
+VCPUS_NOT_AVAILABLE = 'N/A'
+STORAGE_NOT_AVAILABLE = 'N/A'
+
 # Status texts
 NO_CONTAINER_SELECTED_TEXT = 'Address: No container selected'
 ETH_ADDRESS_NOT_AVAILABLE_TEXT = 'ETH Address: Not available'
@@ -632,6 +641,29 @@ COMMON_STYLESHEET_TEMPLATE = """
     color: {text_color};
   }}
   #infoBoxText QLabel {{
+    color: {info_box_text};
+    background-color: transparent;
+    font-weight: {info_box_font_weight};
+  }}
+  #resourcesBox {{
+    background-color: {info_box_bg};
+    border: 1px solid {info_box_border};
+    border-radius: {border_radius};
+    margin: 6px;
+    margin-left: 5px;
+    margin-right: 5px;
+    padding: 8px;
+    color: {info_box_text};
+  }}
+  #resourcesBox QLabel {{
+    color: {info_box_text};
+    font-family: "Courier New";
+    font-size: 10pt;
+    font-weight: {info_box_font_weight};
+    margin: 2px;
+    background-color: transparent;
+  }}
+  #resourcesBoxText QLabel {{
     color: {info_box_text};
     background-color: transparent;
     font-weight: {info_box_font_weight};
