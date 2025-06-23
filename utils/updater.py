@@ -5,7 +5,7 @@ import zipfile
 import shutil
 import platform
 import subprocess
-from PyQt5.QtWidgets import QMessageBox
+from PyQt5.QtWidgets import QMessageBox, QApplication
 
 from utils.const import GITHUB_API_URL
 from ver import __VER__ as CURRENT_VERSION

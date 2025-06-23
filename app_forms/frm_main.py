@@ -86,6 +86,8 @@ from widgets.dialogs.DockerCheckDialog import DockerCheckDialog
 from widgets.CenteredComboBox import CenteredComboBox
 from widgets.LoadingDialog import LoadingDialog
 
+from ver import __VER__ as CURRENT_VERSION
+
 
 def get_platform_and_os_info():
   platform_info = platform.platform()
@@ -3108,8 +3110,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
                 
                 try:
                     from PyQt5.QtWidgets import QMessageBox
-                    from ver import __VER__ as CURRENT_VERSION
-                    
+
                     reply = QMessageBox.question(
                         self, 'Update Available',
                         f'A new version v{latest_version} is available (current v{CURRENT_VERSION}). Do you want to update?',
