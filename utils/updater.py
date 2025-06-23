@@ -114,6 +114,8 @@ class _UpdaterMixin:
 echo EdgeNodeLauncher Update Process
 echo ========================================
 echo Starting update process...
+echo NOTE: Docker containers will continue running during update
+echo Waiting for application to close...
 
 :: Check for Admin rights and if not present, elevate
 >nul 2>&1 "%SYSTEMROOT%\\system32\\cacls.exe" "%SYSTEMROOT%\\system32\\config\\system"
@@ -138,17 +140,19 @@ if '%errorlevel%' NEQ '0' (
 echo Administrative privileges acquired.
 echo Waiting for application to close...
 
-:: Wait for the application to close with a shorter timeout
-set MAX_WAIT=10
+:: Wait for the application to close with extended timeout
+set MAX_WAIT=30
 set COUNTER=0
 
 :loop
-tasklist /FI "IMAGENAME eq {executable_basename}" 2>NUL | find /I "{executable_basename}" >NUL
+tasklist /FI "IMAGENAME eq {executable_basename}" 2>NUL | find /I /C "{executable_basename}" >NUL
 if "%ERRORLEVEL%"=="0" (
     echo Process {executable_basename} is still running... (%COUNTER%/%MAX_WAIT% seconds)
     set /a COUNTER+=1
     if %COUNTER% GEQ %MAX_WAIT% (
-        echo Process wait timeout reached. Proceeding with update anyway.
+        echo Process wait timeout reached. Attempting to terminate process...
+        taskkill /F /IM "{executable_basename}" 2>NUL
+        timeout /T 3 /NOBREAK >NUL
         goto proceed
     )
     timeout /T 1 /NOBREAK >NUL
@@ -156,23 +160,32 @@ if "%ERRORLEVEL%"=="0" (
 )
 
 :proceed
-echo Application closed or timeout reached. 
+echo Application closed or terminated. 
 echo Copying new executable to {current_folder}...
 
 :: Give it a moment to fully release files
-timeout /T 2 /NOBREAK >NUL
+timeout /T 3 /NOBREAK >NUL
 
 :: Create a backup of the current executable
 echo Creating backup of current executable...
-copy /Y /B "{current_executable}" "{current_executable}.bak"
+if exist "{current_executable}" (
+    copy /Y /B "{current_executable}" "{current_executable}.bak"
+    if %errorlevel% neq 0 (
+        echo Failed to create backup. Aborting update.
+        pause
+        goto exit_script
+    )
+)
 
 :: Copy the new executable
 echo Running: {copy_cmd}
 {copy_cmd}
 if %errorlevel% neq 0 (
     echo Copy failed with code: %errorlevel%
-    echo Restoring from backup...
-    copy /Y /B "{current_executable}.bak" "{current_executable}"
+    if exist "{current_executable}.bak" (
+        echo Restoring from backup...
+        copy /Y /B "{current_executable}.bak" "{current_executable}"
+    )
     echo Update failed. Please try again or contact support.
     pause
     goto exit_script
@@ -180,17 +193,22 @@ if %errorlevel% neq 0 (
 
 :: Make sure the executable has the right permissions
 echo Setting permissions...
-icacls "{current_executable}" /grant Everyone:F
+icacls "{current_executable}" /grant Everyone:F >NUL 2>&1
+
+:: Remove backup if update was successful
+if exist "{current_executable}.bak" (
+    del "{current_executable}.bak" >NUL 2>&1
+)
 
 echo Update successful. Launching application...
-timeout /T 1 /NOBREAK >NUL
+timeout /T 2 /NOBREAK >NUL
 cd /D "{current_folder}"
 start "" "{current_executable}"
 
 :exit_script
 echo Cleaning up...
 :: Delete the temporary files
-del "{new_executable}" 2>NUL
+if exist "{new_executable}" del "{new_executable}" >NUL 2>&1
 echo Done.
 :: Delete the batch file and close the window
 (goto) 2>nul & del "%~f0" & exit
@@ -201,19 +219,22 @@ echo Done.
 echo EdgeNodeLauncher Update Process
 echo ========================================
 echo Starting update process...
+echo NOTE: Docker containers will continue running during update
 echo Waiting for application to close...
 
-:: Wait for the application to close with a shorter timeout
-set MAX_WAIT=10
+:: Wait for the application to close with extended timeout
+set MAX_WAIT=30
 set COUNTER=0
 
 :loop
-tasklist /FI "IMAGENAME eq {executable_basename}" 2>NUL | find /I "{executable_basename}" >NUL
+tasklist /FI "IMAGENAME eq {executable_basename}" 2>NUL | find /I /C "{executable_basename}" >NUL
 if "%ERRORLEVEL%"=="0" (
     echo Process {executable_basename} is still running... (%COUNTER%/%MAX_WAIT% seconds)
     set /a COUNTER+=1
     if %COUNTER% GEQ %MAX_WAIT% (
-        echo Process wait timeout reached. Proceeding with update anyway.
+        echo Process wait timeout reached. Attempting to terminate process...
+        taskkill /F /IM "{executable_basename}" 2>NUL
+        timeout /T 3 /NOBREAK >NUL
         goto proceed
     )
     timeout /T 1 /NOBREAK >NUL
@@ -221,67 +242,73 @@ if "%ERRORLEVEL%"=="0" (
 )
 
 :proceed
-echo Application closed or timeout reached.
+echo Application closed or terminated.
 echo Copying new executable to {current_folder}...
 
 :: Give it a moment to fully release files
-timeout /T 2 /NOBREAK >NUL
+timeout /T 3 /NOBREAK >NUL
 
 :: Create a backup of the current executable
 echo Creating backup of current executable...
-copy /Y /B "{current_executable}" "{current_executable}.bak"
+if exist "{current_executable}" (
+    copy /Y /B "{current_executable}" "{current_executable}.bak"
+    if %errorlevel% neq 0 (
+        echo Failed to create backup. Aborting update.
+        pause
+        goto exit_script
+    )
+)
 
 :: Copy the new executable
 echo Running: {copy_cmd}
 {copy_cmd}
 if %errorlevel% neq 0 (
     echo Copy failed with code: %errorlevel%
-    echo Restoring from backup...
-    copy /Y /B "{current_executable}.bak" "{current_executable}"
+    if exist "{current_executable}.bak" (
+        echo Restoring from backup...
+        copy /Y /B "{current_executable}.bak" "{current_executable}"
+    )
     echo Update failed. Please try again or contact support.
     pause
     goto exit_script
 )
 
+:: Remove backup if update was successful
+if exist "{current_executable}.bak" (
+    del "{current_executable}.bak" >NUL 2>&1
+)
+
 echo Update successful. Launching application...
-timeout /T 1 /NOBREAK >NUL
+timeout /T 2 /NOBREAK >NUL
 cd /D "{current_folder}"
 start "" "{current_executable}"
 
 :exit_script
 echo Cleaning up...
 :: Delete the temporary files
-del "{new_executable}" 2>NUL
+if exist "{new_executable}" del "{new_executable}" >NUL 2>&1
 echo Done.
 :: Delete the batch file and close the window
 (goto) 2>nul & del "%~f0" & exit
 """)
 
-      # Execute the batch script with a hidden window
+      # Execute the batch script with a visible window for better user feedback
       self.add_log(f'Batch script created: {script_path}')
       
-      # Use a different window style that will auto-close when finished
-      startupinfo = None
-      if hasattr(subprocess, 'STARTUPINFO'):
-          startupinfo = subprocess.STARTUPINFO()
-          if hasattr(subprocess, 'STARTF_USESHOWWINDOW'):
-              startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-              # Show window minimized and not focused
-              startupinfo.wShowWindow = 7  # SW_SHOWMINNOACTIVE
-      
-      # Run the updater script with a minimized window that will close itself
+      # Run the updater script with a visible console window so user can see progress
       self.add_log(f'Executing updater script: {script_path}')
       
-      # Start the script in a way that it will close itself when done
+      # Start the script in a new console window that shows progress
       if requires_admin:
-          # For admin scripts, we need to show the UAC prompt
-          subprocess.Popen(["cmd", "/c", "start", "/min", script_path], shell=True)
+          # For admin scripts, we need to show the UAC prompt and console window
+          subprocess.Popen(["cmd", "/c", f'title "EdgeNodeLauncher Update" && "{script_path}" && pause'], 
+                          shell=True,
+                          creationflags=subprocess.CREATE_NEW_CONSOLE)
       else:
-          # For non-admin scripts, we can use a more hidden approach
-          subprocess.Popen(["cmd", "/c", script_path], 
-                           shell=True,
-                           startupinfo=startupinfo,
-                           creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0)
+          # For non-admin scripts, show in new console window
+          subprocess.Popen(["cmd", "/c", f'title "EdgeNodeLauncher Update" && "{script_path}" && pause'], 
+                          shell=True,
+                          creationflags=subprocess.CREATE_NEW_CONSOLE)
 
     elif sys.platform == "darwin":
       # For macOS, we need to handle the app bundle
@@ -340,9 +367,77 @@ echo Done.
       subprocess.Popen(['sh', script_path])
       self.add_log(f'Shell script created and executed: {script_path}')
 
-    # Exit the current application
-    QMessageBox.information(None, 'Update Complete', 'The application will now restart to complete the update.')    
-    sys.exit()
+    # Schedule application exit after a short delay to ensure UI updates are processed
+    from PyQt5.QtCore import QTimer
+    
+    def delayed_exit():
+        """Exit the application after ensuring all UI operations are complete"""
+        try:
+            # Get the application instance
+            app = QApplication.instance()
+            
+            # First attempt: Graceful close
+            if app:
+                self.add_log("Attempting graceful application shutdown...", debug=True)
+                app.closeAllWindows()
+                app.processEvents()
+                
+                # Give a brief moment for graceful shutdown
+                import time
+                time.sleep(0.5)
+                app.processEvents()
+            
+            # Second attempt: Force quit with basic cleanup
+            self.add_log("Forcing application exit for update...", debug=True)
+            
+            # Stop only GUI timers (monitoring will stop naturally)
+            try:
+                # Stop timers if they exist
+                if hasattr(self, 'timer') and self.timer:
+                    self.timer.stop()
+            except:
+                pass
+            
+            # Third attempt: System exit
+            try:
+                if app:
+                    app.quit()
+                    app.processEvents()
+                sys.exit(0)
+            except:
+                pass
+                
+        except:
+            pass
+        
+        # Final fallback: Force exit at OS level (only the GUI process)
+        try:
+            import os
+            self.add_log("Using OS-level force exit for GUI application", debug=True)
+            if os.name == 'nt':  # Windows
+                # On Windows, use taskkill to force close only our GUI process
+                import subprocess
+                current_pid = os.getpid()
+                try:
+                    # Kill only the current GUI process
+                    subprocess.run(['taskkill', '/F', '/PID', str(current_pid)], 
+                                 capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                except:
+                    pass
+            # Fallback for all platforms
+            os._exit(0)
+        except:
+            # Last resort - this should never fail
+            import signal
+            os.kill(os.getpid(), signal.SIGTERM)
+    
+    # Show message to user
+    QMessageBox.information(None, 'Update Ready', 
+                           'The update has been prepared. The application will now close and update itself.\n\n' +
+                           'Please do not close the update window that appears.')
+    
+    # Schedule delayed exit to allow message box to close properly
+    QTimer.singleShot(1000, delayed_exit)
     return
 
 
@@ -391,12 +486,19 @@ echo Done.
                 self._extract_zip(downloaded_file, os.path.dirname(downloaded_file))
             
             # Show final confirmation before proceeding with update
-            QMessageBox.information(None, 'Ready to Update', 
-                                   'The update has been downloaded. The application will now close and update itself.\n\n' +
-                                   'The application will automatically restart when the update is complete.')
+            reply = QMessageBox.question(None, 'Ready to Update', 
+                                       'The update has been downloaded and is ready to install.\n\n' +
+                                       'The application will close and update itself automatically.\n' +
+                                       'This process may take 30-60 seconds.\n\n' +
+                                       'Do you want to proceed with the update now?',
+                                       QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
             
-            # Replace the executable
-            self._replace_executable(downloaded_file, 'EdgeNodeLauncher')
+            if reply == QMessageBox.Yes:
+              # Replace the executable
+              self._replace_executable(downloaded_file, 'EdgeNodeLauncher')
+            else:
+              self.add_log("Update cancelled by user")
+              QMessageBox.information(None, 'Update Cancelled', 'The update has been cancelled. You can update later from the menu.')
           except Exception as e:
             self.add_log(f"Error during download or installation: {str(e)}")
             QMessageBox.critical(None, 'Update Failed', f'Failed to download or install the update: {str(e)}')

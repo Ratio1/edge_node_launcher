@@ -778,6 +778,97 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     # Update resources display for theme consistency
     self.update_resources_display()
 
+  def closeEvent(self, event):
+    """Handle application close event with proper cleanup."""
+    try:
+        self.add_log("Starting application shutdown sequence...", debug=True)
+        
+        # Stop any running timers first
+        if hasattr(self, 'timer') and self.timer:
+            self.timer.stop()
+            self.add_log("Stopped main refresh timer", debug=True)
+        
+        # Stop any loading indicators
+        if hasattr(self, 'loading_indicator') and self.loading_indicator:
+            self.loading_indicator.stop()
+            self.add_log("Stopped loading indicators", debug=True)
+        
+        # Close any open dialogs forcefully
+        dialog_attrs = ['startup_dialog', 'launcher_dialog', 'toggle_dialog', 'docker_pull_dialog']
+        for dialog_attr in dialog_attrs:
+            if hasattr(self, dialog_attr):
+                dialog = getattr(self, dialog_attr)
+                if dialog and hasattr(dialog, 'close'):
+                    try:
+                        dialog.close()
+                        self.add_log(f"Closed {dialog_attr}", debug=True)
+                    except Exception as e:
+                        self.add_log(f"Error closing {dialog_attr}: {str(e)}", debug=True)
+        
+        # Force close any remaining child widgets
+        try:
+            for child in self.findChildren(QDialog):
+                if child and child.isVisible():
+                    child.close()
+                    self.add_log(f"Force closed dialog: {type(child).__name__}", debug=True)
+        except Exception as e:
+            self.add_log(f"Error force closing dialogs: {str(e)}", debug=True)
+        
+        # Process any remaining events
+        try:
+            QApplication.processEvents()
+            self.add_log("Processed remaining events", debug=True)
+        except:
+            pass
+        
+        self.add_log("Application shutdown completed successfully", debug=True)
+        
+    except Exception as e:
+        self.add_log(f"Error during application close: {str(e)}", debug=True)
+        # Continue with shutdown even if there are errors
+    
+    # Always accept the close event to ensure shutdown
+    event.accept()
+
+  def force_application_exit(self):
+    """Force the application to exit immediately - used during updates."""
+    try:
+        self.add_log("FORCE EXIT: Initiating immediate application shutdown for update", color="yellow")
+        
+        # Stop only GUI timers
+        if hasattr(self, 'timer') and self.timer:
+            self.timer.stop()
+        
+        # Close all windows
+        app = QApplication.instance()
+        if app:
+            app.closeAllWindows()
+        
+        # Force exit at OS level (only this GUI process)
+        import os
+        import signal
+        
+        if os.name == 'nt':  # Windows
+            try:
+                import subprocess
+                current_pid = os.getpid()
+                # Kill only our GUI process
+                subprocess.run(['taskkill', '/F', '/PID', str(current_pid)], 
+                             capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            except:
+                os._exit(0)
+        else:
+            # Unix systems
+            try:
+                os.kill(os.getpid(), signal.SIGTERM)
+            except:
+                os._exit(0)
+                
+    except:
+        # Absolute last resort
+        import os
+        os._exit(0)
+
   def update_copy_button_icons(self):
     """Update the copy button icons based on the current theme."""
     try:
