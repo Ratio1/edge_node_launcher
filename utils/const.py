@@ -35,6 +35,11 @@ DOCKER_IMAGE_AUTO_UPDATE_CHECK_INTERVAL = 300  # 5 minutes
 MAX_ALIAS_LENGTH = 15  # Maximum length for aliases (node name and authorized addresses)
 
 # ============================================================================
+# NODE REQUIREMENTS
+# ============================================================================
+MIN_NODE_RAM_GB = 16  # Minimum RAM requirement per node in GB
+
+# ============================================================================
 # UI TEXT CONSTANTS
 # ============================================================================
 # Window and titles
@@ -60,6 +65,15 @@ UPTIME_LABEL = 'Up Time:'
 EPOCH_LABEL = 'Epoch:'
 EPOCH_AVAIL_LABEL = 'Epochs avail:'
 NODE_VERSION_LABEL = 'Running ver:'
+
+# Resources box labels
+RESOURCES_BOX_TITLE = 'System Resources'
+MEMORY_LABEL = 'Memory:'
+VCPUS_LABEL = 'vCPUs:'
+STORAGE_LABEL = 'Storage:'
+MEMORY_NOT_AVAILABLE = 'N/A'
+VCPUS_NOT_AVAILABLE = 'N/A'
+STORAGE_NOT_AVAILABLE = 'N/A'
 
 # Status texts
 NO_CONTAINER_SELECTED_TEXT = 'Address: No container selected'
@@ -112,6 +126,12 @@ EDIT_ENV_FILE_DIALOG_TITLE = 'Edit .env File'
 RESET_NODE_CONFIRMATION_TEXT = 'Are you sure you want to reset this node?'
 ENTER_NODE_NAME_TEXT = 'Enter a friendly name for this node:'
 RESETTING_NODE_ADDRESS_TEXT = 'Resetting node address...'
+
+# RAM checking messages
+INSUFFICIENT_RAM_TITLE = 'Cannot Add New Node'
+INSUFFICIENT_RAM_MESSAGE = 'Cannot add a new node - maximum capacity reached.\n\nSystem Information:\n• Total RAM: {total_gb:.1f} GB\n• Maximum Nodes Supported: {max_nodes} ({total_gb:.1f} GB / {min_ram_gb} GB per node)\n• Current Nodes: {current_nodes}\n\nEach node requires {min_ram_gb} GB of RAM.'
+RAM_CHECK_ERROR_TITLE = 'RAM Check Error'
+RAM_CHECK_ERROR_MESSAGE = 'Unable to determine available system RAM.\n\nWould you like to proceed anyway?'
 
 # Input placeholders
 ENTER_NODE_NAME_PLACEHOLDER = 'Enter node name'
@@ -635,6 +655,35 @@ COMMON_STYLESHEET_TEMPLATE = """
     color: {info_box_text};
     background-color: transparent;
     font-weight: {info_box_font_weight};
+  }}
+  #resourcesBox {{
+    background-color: {info_box_bg};
+    border: 1px solid {info_box_border};
+    border-radius: {border_radius};
+    margin: 6px;
+    margin-left: 5px;
+    margin-right: 5px;
+    padding: 8px;
+    color: {info_box_text};
+    min-height: 60px;
+  }}
+  #resourcesBox QLabel {{
+    color: {info_box_text};
+    font-family: "Courier New";
+    font-size: 10pt;
+    font-weight: {info_box_font_weight};
+    margin: 2px;
+    padding: 2px 4px;
+    background-color: transparent;
+    word-wrap: break-word;
+    max-width: 270px;
+  }}
+  #resourcesBoxText QLabel {{
+    color: {info_box_text};
+    background-color: transparent;
+    font-weight: {info_box_font_weight};
+    word-wrap: break-word;
+    max-width: 270px;
   }}
   #myComboPopup {{
     background-color: #2e2e2e; 

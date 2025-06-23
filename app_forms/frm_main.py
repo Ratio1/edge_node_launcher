@@ -65,6 +65,7 @@ from utils.const import *
 from utils.docker import _DockerUtilsMixin
 from utils.docker_commands import DockerCommandHandler
 from utils.updater import _UpdaterMixin
+from utils.system_resources import _SystemResourcesMixin
 from utils.docker_utils import get_volume_name, generate_container_name
 from utils.config_manager import ConfigManager, ContainerConfig
 
@@ -112,7 +113,7 @@ def log_with_color(message, color="gray"):
   print(f"{start_color}{message}{end_color}", flush=True)
   return
 
-class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
+class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourcesMixin):
   def __init__(self, app_icon=None):
     self.logView = None
     self.log_buffer = []
@@ -210,6 +211,9 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
 
     # Initialize copy button icons based on current theme
     self.update_copy_button_icons()
+
+    # Initialize system resources display
+    self.update_resources_display()
 
   def init_button_colors(self):
     """Initialize or update button colors based on current theme"""
@@ -542,6 +546,46 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
     info_box.setLayout(info_box_layout)
     top_button_area.addWidget(info_box)
     
+    # Add some spacing between info box and resources box
+    top_button_area.addSpacing(7)
+    
+    # Resources box
+    resources_box = QGroupBox()
+    resources_box.setObjectName("resourcesBox")
+    resources_box.setContentsMargins(5, 0, 5, 0)  # Add left and right margins directly to the widget
+    resources_box_layout = QVBoxLayout()
+    resources_box_layout.setContentsMargins(5, 6, 5, 8)  # Left, Top, Right, Bottom margins inside the box
+
+    # Memory display
+    self.memoryDisplay = QLabel(MEMORY_LABEL + ' ' + MEMORY_NOT_AVAILABLE)
+    self.memoryDisplay.setFont(QFont("Courier New"))
+    self.memoryDisplay.setObjectName("resourcesBoxText")
+    self.memoryDisplay.setWordWrap(True)
+    self.memoryDisplay.setMaximumWidth(270)
+    self.memoryDisplay.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+    resources_box_layout.addWidget(self.memoryDisplay)
+
+    # VCPUs display
+    self.vcpusDisplay = QLabel(VCPUS_LABEL + ' ' + VCPUS_NOT_AVAILABLE)
+    self.vcpusDisplay.setFont(QFont("Courier New"))
+    self.vcpusDisplay.setObjectName("resourcesBoxText")
+    self.vcpusDisplay.setWordWrap(True)
+    self.vcpusDisplay.setMaximumWidth(270)
+    self.vcpusDisplay.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+    resources_box_layout.addWidget(self.vcpusDisplay)
+
+    # Storage display
+    self.storageDisplay = QLabel(STORAGE_LABEL + ' ' + STORAGE_NOT_AVAILABLE)
+    self.storageDisplay.setFont(QFont("Courier New"))
+    self.storageDisplay.setObjectName("resourcesBoxText")
+    self.storageDisplay.setWordWrap(True)
+    self.storageDisplay.setMaximumWidth(270)
+    self.storageDisplay.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+    resources_box_layout.addWidget(self.storageDisplay)
+    
+    resources_box.setLayout(resources_box_layout)
+    top_button_area.addWidget(resources_box)
+    
     menu_layout.addLayout(top_button_area)
 
     # Spacer to push bottom_button_area to the bottom
@@ -727,6 +771,9 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
     # Force style update
     self.force_debug_checkbox.style().unpolish(self.force_debug_checkbox)
     self.force_debug_checkbox.style().polish(self.force_debug_checkbox)
+
+    # Update resources display for theme consistency
+    self.update_resources_display()
 
   def update_copy_button_icons(self):
     """Update the copy button icons based on the current theme."""
@@ -1039,14 +1086,15 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
 
     def on_success(history: NodeHistory) -> None:
         # Make sure we're still on the same container
-        if container_name != self.container_combo.currentText():
-            self.add_log(f"Container changed during data plotting, ignoring results", debug=True)
+        current_selected = self.container_combo.currentText()
+        if container_name != current_selected:
+            self.add_log(f"Container changed during data plotting from {container_name} to {current_selected}, ignoring results", debug=True)
             return
             
         self.__last_plot_data = history
         self.plot_graphs()
         
-        # Update uptime and other metrics
+        # Update uptime and other metrics only for the currently selected container
         self.__current_node_uptime = history.uptime
         self.__current_node_epoch = history.current_epoch
         self.__current_node_epoch_avail = history.current_epoch_avail
@@ -1214,6 +1262,9 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
     
     # If not running, check if we have cached address data in config
     if not is_running:
+      # Check if we're in a loading state (container starting up)
+      is_loading = hasattr(self, 'loading_indicator') and self.loading_indicator.isVisible()
+      
       config_container = self.config_manager.get_container(container_name)
       if config_container and config_container.node_address:
         # If we have cached data, keep displaying it but indicate node is not running
@@ -1246,17 +1297,25 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
       else:
         # No cached data and not running
         if not hasattr(self, 'node_addr') or not self.node_addr:
-          self.addressDisplay.setText('Address: Node not running')
-          self.ethAddressDisplay.setText('ETH Address: Not available')
-          self.nameDisplay.setText('')
+          if is_loading:
+            # Container is starting up - show loading messages
+            self.addressDisplay.setText('Address: Starting up...')
+            self.ethAddressDisplay.setText('ETH Address: Starting up...')
+            self.nameDisplay.setText('Name: Loading...')
+          else:
+            # Container is stopped - show neutral status
+            self.addressDisplay.setText('Address: Node not running')
+            self.ethAddressDisplay.setText('ETH Address: -')
+            self.nameDisplay.setText('')
           self.copyAddrButton.hide()
           self.copyEthButton.hide()
         return
 
     def on_success(node_info: NodeInfo) -> None:
       # Make sure we're still on the same container
-      if container_name != self.container_combo.currentText():
-        self.add_log(f"Container changed during address refresh, ignoring results", debug=True)
+      current_selected = self.container_combo.currentText()
+      if container_name != current_selected:
+        self.add_log(f"Container changed during address refresh from {container_name} to {current_selected}, ignoring results", debug=True)
         return
 
       # Get current config to check for changes
@@ -1326,15 +1385,27 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
             f"Node info request for {container_name} timed out. This may indicate network issues or high load on the remote host.",
             color="red")
       else:
+        # Check if we're in a loading state (container starting up)
+        is_loading = hasattr(self, 'loading_indicator') and self.loading_indicator.isVisible()
+        
         self.add_log(f'Error getting node info for {container_name}: {error}', debug=True)
-        self.addressDisplay.setText('Address: Error getting node info')
-        self.ethAddressDisplay.setText('ETH Address: Not available')
-        self.nameDisplay.setText('')
+        
+        if is_loading:
+          # Container is starting up - show loading messages instead of error
+          self.addressDisplay.setText('Address: Starting up...')
+          self.ethAddressDisplay.setText('ETH Address: Starting up...')
+          self.nameDisplay.setText('Name: Loading...')
+        else:
+          # Container is not loading - show error state
+          self.addressDisplay.setText('Address: Error getting node info')
+          self.ethAddressDisplay.setText('ETH Address: -')
+          self.nameDisplay.setText('')
+        
         self.copyAddrButton.hide()
         self.copyEthButton.hide()
 
         # If this is a timeout error, log it more prominently
-        if "timed out" in error.lower():
+        if "timeout" in error.lower() or "timed out" in error.lower():
           self.add_log(
             f"Node info request for {container_name} timed out. This may indicate network issues or high load on the remote host.",
             color="red")
@@ -1367,11 +1438,21 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
     
     # Check if container is running
     if not self.is_container_running():
-      uptime = "STOPPED"
-      node_epoch = "N/A"
-      node_epoch_avail = 0
-      ver = "N/A"
-      color = 'red'
+      # Check if we're in a loading state (container starting up)
+      is_loading = hasattr(self, 'loading_indicator') and self.loading_indicator.isVisible()
+      
+      if is_loading:
+        uptime = "STARTING..."
+        node_epoch = "Loading..."
+        node_epoch_avail = 0
+        ver = "Loading..."
+        color = 'blue'
+      else:
+        uptime = "STOPPED"
+        node_epoch = "N/A"
+        node_epoch_avail = 0
+        ver = "N/A"
+        color = 'red'
       
     # Only update if values have changed
     if uptime != self.__display_uptime:
@@ -1441,6 +1522,9 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
     """Refresh all data and UI elements."""
     self._refresh_local_containers()
 
+    # Update system resources display
+    self.update_resources_display()
+
     # Check for updates periodically
     if (time() - self.__last_auto_update_check) > AUTO_UPDATE_CHECK_INTERVAL:
       verbose = self.__last_auto_update_check == 0
@@ -1482,6 +1566,10 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
   def _refresh_local_containers(self):
     """Refresh local container list and info."""
     try:
+        # Stop any stale loading indicator during regular refresh
+        if hasattr(self, 'loading_indicator') and not self.is_container_running():
+            self.loading_indicator.stop()
+        
         # Clear any remote connection settings to ensure we're using local Docker
         # Instead of calling clear_remote_connection(), directly set remote_ssh_command to None
         if hasattr(self, 'docker_handler'):
@@ -1507,6 +1595,9 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
                     self.add_log(f"Error plotting data for local container: {str(e)}", debug=True, color="red")
             except Exception as e:
                 self.add_log(f"Error refreshing local container info: {str(e)}", color="red")
+        else:
+            # Even when container is not running, update uptime display to show "STOPPED"
+            self.maybe_refresh_uptime()
         
         # Always update the toggle button text
         self.update_toggle_button_text()
@@ -1514,7 +1605,6 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
         self.add_log(f"Error in local container refresh: {str(e)}", color="red")
         # Ensure toggle button text is updated even if there's an error
         self.update_toggle_button_text()
-
 
   def dapp_button_clicked(self):
     import webbrowser
@@ -1537,6 +1627,66 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
       'Ratio1 Explorer is not yet implemented'
     )
     return
+  
+  
+  def update_toggle_button_text(self):
+    """Update the toggle button text and style based on the current container state"""
+    # Get the current index from the combo box
+    current_index = self.container_combo.currentIndex()
+    
+    # Get the current text to check if it needs to be updated
+    current_text = self.toggleButton.text()
+    current_enabled = self.toggleButton.isEnabled()
+    
+    if current_index < 0:
+        # Only update if state changed
+        if current_text != LAUNCH_CONTAINER_BUTTON_TEXT or current_enabled:
+            self.toggleButton.setText(LAUNCH_CONTAINER_BUTTON_TEXT)
+            self.apply_button_style(self.toggleButton, 'toggle_disabled')
+            self.toggleButton.setEnabled(False)
+        return
+        
+    # Get the actual container name from the item data
+    container_name = self.container_combo.itemData(current_index)
+    if not container_name:
+        # Only update if state changed
+        if current_text != LAUNCH_CONTAINER_BUTTON_TEXT or current_enabled:
+            self.toggleButton.setText(LAUNCH_CONTAINER_BUTTON_TEXT)
+            self.apply_button_style(self.toggleButton, 'toggle_disabled')
+            self.toggleButton.setEnabled(False)
+        return
+    
+    # Check if container exists in Docker
+    container_exists = self.container_exists_in_docker(container_name)
+    
+    # If container doesn't exist in Docker but exists in config, show launch button
+    if not container_exists:
+        config_container = self.config_manager.get_container(container_name)
+        if config_container:
+            # Only update if state changed
+            if current_text != LAUNCH_CONTAINER_BUTTON_TEXT or not current_enabled:
+                self.toggleButton.setText(LAUNCH_CONTAINER_BUTTON_TEXT)
+                self.apply_button_style(self.toggleButton, 'toggle_start')
+                self.toggleButton.setEnabled(True)
+            return
+    
+    # Make sure the docker handler has the correct container name
+    self.docker_handler.set_container_name(container_name)
+    
+    # Check if the container is running using docker_handler directly
+    is_running = self.docker_handler.is_container_running()
+    
+    # Determine the new state
+    new_text = STOP_CONTAINER_BUTTON_TEXT if is_running else LAUNCH_CONTAINER_BUTTON_TEXT
+    new_style = 'toggle_stop' if is_running else 'toggle_start'
+    
+    # Update text if changed
+    if current_text != new_text:
+        self.toggleButton.setText(new_text)
+    
+    # Always apply the style to ensure it updates when theme changes
+    self.apply_button_style(self.toggleButton, new_style)
+    self.toggleButton.setEnabled(True)
   
   
   def toggle_force_debug(self, state):
@@ -1594,7 +1744,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
     # Create dialog
     dialog = QDialog(self)
     dialog.setWindowTitle("Change Node Name")
-    dialog.setMinimumWidth(400)
+    dialog.setMinimumWidth(450)
     
     layout = QVBoxLayout()
     
@@ -1612,6 +1762,16 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
     text_color = "white" if is_dark else "black"
     name_input.setStyleSheet(f"color: {text_color};")
     layout.addWidget(name_input)
+    
+    # Add restrictions section
+    restrictions_label = QLabel("Name restrictions:")
+    restrictions_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
+    layout.addWidget(restrictions_label)
+    
+    restrictions_text = QLabel("• Maximum 15 characters\n• Only letters (a-z, A-Z), numbers (0-9), hyphens (-), underscores (_)\n• Cannot be empty")
+    restrictions_text.setStyleSheet("margin-left: 10px; margin-bottom: 10px;")
+    restrictions_text.setWordWrap(True)
+    layout.addWidget(restrictions_text)
     
     # Add buttons
     button_layout = QHBoxLayout()
@@ -1655,39 +1815,11 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
             self.toast.show_notification(NotificationType.ERROR, "No container selected")
             return
     
-    # Check if name exceeds max length
-    if len(new_name) > MAX_ALIAS_LENGTH:
-        # Show warning dialog
-        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout
-        warning_dialog = QDialog(self)
-        warning_dialog.setWindowTitle("Warning")
-        warning_dialog.setMinimumWidth(400)
-        layout = QVBoxLayout()
-        
-        warning_text = f"Node name exceeds maximum length of {MAX_ALIAS_LENGTH} characters.\nIt will be truncated to: {new_name[:MAX_ALIAS_LENGTH]}"
-        layout.addWidget(QLabel(warning_text))
-        
-        button_layout = QHBoxLayout()
-        proceed_btn = QPushButton("Proceed")
-        proceed_btn.setProperty("type", "confirm")  # Set property for styling
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.setProperty("type", "cancel")  # Set property for styling
-        
-        button_layout.addWidget(proceed_btn)
-        button_layout.addWidget(cancel_btn)
-        layout.addLayout(button_layout)
-        
-        warning_dialog.setLayout(layout)
-        warning_dialog.setStyleSheet(self._current_stylesheet)  # Apply current theme
-        
-        # Connect buttons
-        proceed_btn.clicked.connect(warning_dialog.accept)
-        cancel_btn.clicked.connect(warning_dialog.reject)
-        
-        if warning_dialog.exec_() == QDialog.Accepted:
-            new_name = new_name[:MAX_ALIAS_LENGTH]
-        else:
-            return  # Return to editing if user cancels
+    # Validate the new name
+    validation_error = self._validate_node_alias(new_name)
+    if validation_error:
+        self.toast.show_notification(NotificationType.ERROR, validation_error)
+        return
     
     def on_success(data: dict) -> None:
         self.add_log('Successfully renamed node, restarting container...', debug=True)
@@ -1732,15 +1864,92 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
 
     def on_error(error: str) -> None:
         self.add_log(f'Error renaming node: {error}', debug=True)
+        # Extract meaningful error message from the response
+        error_message = self._extract_rename_error_message(error)
         self.toast.show_notification(
             NotificationType.ERROR,
-            'Failed to rename node'
+            f'Failed to rename node: {error_message}'
         )
 
     self.docker_handler.update_node_name(new_name, on_success, on_error)
 
+  def _validate_node_alias(self, alias: str) -> str:
+    """Validate a node alias according to the rules.
+    
+    Args:
+        alias: The alias to validate
+        
+    Returns:
+        str: Error message if validation fails, empty string if valid
+    """
+    import re
+    
+    # Check if empty
+    if not alias:
+        return "Node name cannot be empty"
+    
+    # Check length
+    if len(alias) > MAX_ALIAS_LENGTH:
+        return f"Node name cannot exceed {MAX_ALIAS_LENGTH} characters (current: {len(alias)})"
+    
+    # Check allowed characters: letters, numbers, hyphens, underscores
+    if not re.match(r'^[a-zA-Z0-9_-]+$', alias):
+        return "Node name can only contain letters (a-z, A-Z), numbers (0-9), hyphens (-), and underscores (_)"
+    
+    return ""  # Valid
+  
+  def _extract_rename_error_message(self, error: str) -> str:
+    """Extract a meaningful error message from the rename operation error.
+    
+    Args:
+        error: The raw error message from the rename operation
+        
+    Returns:
+        str: A user-friendly error message
+    """
+    error_lower = error.lower()
+    
+    # Check for common error patterns and provide specific messages
+    if "timeout" in error_lower or "timed out" in error_lower:
+        return "Operation timed out. Please check your connection and try again."
+    elif "connection" in error_lower and ("refused" in error_lower or "failed" in error_lower):
+        return "Unable to connect to the node. Please ensure the container is running."
+    elif "permission" in error_lower or "forbidden" in error_lower:
+        return "Permission denied. Please check your node permissions."
+    elif "invalid" in error_lower and "name" in error_lower:
+        return "The provided name is invalid or not accepted by the node."
+    elif "conflict" in error_lower or "already exists" in error_lower:
+        return "A node with this name already exists. Please choose a different name."
+    elif "network" in error_lower:
+        return "Network error occurred. Please check your connection and try again."
+    elif "not found" in error_lower or "404" in error:
+        return "Node endpoint not found. The container may not be fully started."
+    elif "bad request" in error_lower or "400" in error:
+        return "Invalid request. Please check the node name format."
+    elif "internal server error" in error_lower or "500" in error:
+        return "Internal server error occurred. Please try again later."
+    else:
+        # Return a cleaned up version of the original error
+        # Remove common technical prefixes and clean up the message
+        cleaned_error = error.strip()
+        if cleaned_error.startswith("Error:"):
+            cleaned_error = cleaned_error[6:].strip()
+        if cleaned_error.startswith("Failed to"):
+            cleaned_error = cleaned_error[9:].strip()
+        
+        # Capitalize first letter if it's not already
+        if cleaned_error and cleaned_error[0].islower():
+            cleaned_error = cleaned_error[0].upper() + cleaned_error[1:]
+        
+        return cleaned_error if cleaned_error else "Unknown error occurred"
+
   def _clear_info_display(self):
     """Clear all information displays."""
+    # Check if we're in a loading state (container starting up)
+    is_loading = hasattr(self, 'loading_indicator') and self.loading_indicator.isVisible()
+    
+    # Don't stop the loading indicator here - let the calling methods manage it
+    
     # Set text color based on theme
     text_color = "white" if self._current_stylesheet == DARK_STYLESHEET else "black"
     
@@ -1784,19 +1993,35 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
             if hasattr(self, 'copyEthButton'):
                 self.copyEthButton.setVisible(True)
     else:
-        # No cached data, clear displays
-        if hasattr(self, 'nameDisplay'):
-            self.nameDisplay.setText('Name: -')
+        # No cached data - show loading state if container is starting, otherwise show placeholder
+        if is_loading:
+            # Container is starting up - show loading messages instead of "Not available"
+            if hasattr(self, 'nameDisplay'):
+                self.nameDisplay.setText('Name: Loading...')
 
-        if hasattr(self, 'addressDisplay'):
-            self.addressDisplay.setText('Address: Not available')
-            if hasattr(self, 'copyAddrButton'):
-                self.copyAddrButton.hide()
-        
-        if hasattr(self, 'ethAddressDisplay'):
-            self.ethAddressDisplay.setText('ETH Address: Not available')
-            if hasattr(self, 'copyEthButton'):
-                self.copyEthButton.hide()
+            if hasattr(self, 'addressDisplay'):
+                self.addressDisplay.setText('Address: Starting up...')
+                if hasattr(self, 'copyAddrButton'):
+                    self.copyAddrButton.hide()
+            
+            if hasattr(self, 'ethAddressDisplay'):
+                self.ethAddressDisplay.setText('ETH Address: Starting up...')
+                if hasattr(self, 'copyEthButton'):
+                    self.copyEthButton.hide()
+        else:
+            # Container is not loading - show neutral placeholders
+            if hasattr(self, 'nameDisplay'):
+                self.nameDisplay.setText('Name: -')
+
+            if hasattr(self, 'addressDisplay'):
+                self.addressDisplay.setText('Address: -')
+                if hasattr(self, 'copyAddrButton'):
+                    self.copyAddrButton.hide()
+            
+            if hasattr(self, 'ethAddressDisplay'):
+                self.ethAddressDisplay.setText('ETH Address: -')
+                if hasattr(self, 'copyEthButton'):
+                    self.copyEthButton.hide()
         
         # Clear instance variables
         self.node_addr = None
@@ -1887,6 +2112,10 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
         
     try:
         self.add_log(f"Selected container: {container_name}", debug=True)
+        
+        # Ensure loading indicator is stopped when selecting a new container
+        if hasattr(self, 'loading_indicator'):
+            self.loading_indicator.stop()
         
         # Get the current index and actual container name from the data
         current_index = self.container_combo.currentIndex()
@@ -1979,7 +2208,38 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
 
   def show_add_node_dialog(self):
     """Show confirmation dialog for adding a new node."""
-    from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QHBoxLayout, QPushButton
+    from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QHBoxLayout, QPushButton, QMessageBox
+    from utils.const import (INSUFFICIENT_RAM_TITLE, INSUFFICIENT_RAM_MESSAGE, 
+                            RAM_CHECK_ERROR_TITLE, RAM_CHECK_ERROR_MESSAGE, MIN_NODE_RAM_GB)
+
+    # Check RAM before showing the dialog
+    existing_node_count = len(self.config_manager.get_all_containers())
+    ram_check = self.check_ram_for_new_node(existing_node_count)
+    
+    # If there's an error checking RAM, ask user if they want to proceed
+    if 'error' in ram_check:
+        reply = QMessageBox.question(
+            self, 
+            RAM_CHECK_ERROR_TITLE,
+            RAM_CHECK_ERROR_MESSAGE,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+    # If there's insufficient RAM, show error and return
+    elif not ram_check['can_add_node']:
+        QMessageBox.warning(
+            self,
+            INSUFFICIENT_RAM_TITLE,
+            INSUFFICIENT_RAM_MESSAGE.format(
+                total_gb=ram_check['total_ram_gb'],
+                max_nodes=ram_check['max_nodes_supported'],
+                current_nodes=ram_check['current_node_count'],
+                min_ram_gb=MIN_NODE_RAM_GB
+            )
+        )
+        return
 
     # Generate the container name that would be used
     container_name = generate_container_name()
@@ -1992,8 +2252,18 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
 
     layout = QVBoxLayout()
 
-    # Add info text with more descriptive message
-    info_text = f"This action will create a new Edge Node. \n\nDo you want to proceed?"
+    # Add info text with more descriptive message including RAM info
+    if 'error' not in ram_check:
+        info_text = (f"This action will create a new Edge Node.\n\n"
+                    f"System Capacity:\n"
+                    f"• Total RAM: {ram_check['total_ram_gb']:.1f} GB\n"
+                    f"• RAM per node: {ram_check['min_required_gb']} GB\n"
+                    f"• Max nodes supported: {ram_check['max_nodes_supported']}\n"
+                    f"• Current nodes: {existing_node_count}\n\n"
+                    f"Do you want to proceed?")
+    else:
+        info_text = f"This action will create a new Edge Node. \n\nDo you want to proceed?"
+    
     info_label = QLabel(info_text)
     info_label.setWordWrap(True)  # Enable word wrapping for better readability
     layout.addWidget(info_label)
@@ -2244,6 +2514,9 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
         # Check if Docker image exists
         image_exists = self.docker_handler._ensure_image_exists()
         if not image_exists:
+            # Stop the loading indicator since we're switching to pull dialog
+            self.loading_indicator.stop()
+            
             # Close the existing launcher dialog if it's open
             if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None :
                 self.launcher_dialog.safe_close()
@@ -2531,7 +2804,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
         default_container = ContainerConfig(
             name="r1node",
             volume="r1vol",
-            node_alias="Default Node"
+            node_alias="r1node"
         )
         self.config_manager.add_container(default_container)
         containers = [default_container]
@@ -2656,6 +2929,10 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
     # Call the parent method first
     super().post_launch_setup()
     
+    # Ensure loading indicator is stopped after launch
+    if hasattr(self, 'loading_indicator'):
+        self.loading_indicator.stop()
+    
     # Update button state to show container is running
     self.toggleButton.setText(STOP_CONTAINER_BUTTON_TEXT)
     self.apply_button_style(self.toggleButton, 'toggle_stop')
@@ -2685,357 +2962,25 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin):
     return
 
 
-  def _refresh_local_containers(self):
-    """Refresh local container list and info."""
+
+  def update_resources_display(self):
+    """Update the system resources display with current information."""
     try:
-        # Clear any remote connection settings to ensure we're using local Docker
-        # Instead of calling clear_remote_connection(), directly set remote_ssh_command to None
-        if hasattr(self, 'docker_handler'):
-            self.docker_handler.remote_ssh_command = None
+        # Use the new mixin helper methods for cleaner, more maintainable code
+        memory_info = self.get_formatted_memory_info()
+        cpu_info = self.get_formatted_cpu_info()
+        storage_info = self.get_formatted_storage_info()
         
-        if hasattr(self, 'ssh_service'):
-            self.ssh_service.clear_configuration()
+        # Update displays
+        self.memoryDisplay.setText(f"{MEMORY_LABEL} {memory_info}")
+        self.vcpusDisplay.setText(f"{VCPUS_LABEL} {cpu_info}")
+        self.storageDisplay.setText(f"{STORAGE_LABEL} {storage_info}")
         
-        # We don't need to refresh the container list on every refresh
-        # The container list only changes when containers are added or removed
-        # self.refresh_container_list()
-        
-        # Update container info if running
-        if self.is_container_running():
-            try:
-                # Refresh address first (usually faster)
-                self.refresh_local_address()
-                
-                # Then plot data (can be slower)
-                try:
-                    self.plot_data()
-                except Exception as e:
-                    self.add_log(f"Error plotting data for local container: {str(e)}", debug=True, color="red")
-            except Exception as e:
-                self.add_log(f"Error refreshing local container info: {str(e)}", color="red")
-        
-        # Always update the toggle button text
-        self.update_toggle_button_text()
-    except Exception as e:
-        self.add_log(f"Error in local container refresh: {str(e)}", color="red")
-        # Ensure toggle button text is updated even if there's an error
-        self.update_toggle_button_text()
-
-
-  def dapp_button_clicked(self):
-    import webbrowser
-    dapp_url = DAPP_URLS.get(self.current_environment)
-    if dapp_url:
-      webbrowser.open(dapp_url)
-      self.add_log(f'Opening dApp URL: {dapp_url}', debug=True)
-    else:
-      self.add_log(f'Unknown environment: {self.current_environment}', debug=True)
-      self.toast.show_notification(
-        NotificationType.ERROR,
-        f'Unknown environment: {self.current_environment}'
-      )
-    return
-  
-  
-  def explorer_button_clicked(self):
-    self.toast.show_notification(
-      NotificationType.INFO,
-      'Ratio1 Explorer is not yet implemented'
-    )
-    return
-  
-  
-  def update_toggle_button_text(self):
-    """Update the toggle button text and style based on the current container state"""
-    # Get the current index from the combo box
-    current_index = self.container_combo.currentIndex()
-    
-    # Get the current text to check if it needs to be updated
-    current_text = self.toggleButton.text()
-    current_enabled = self.toggleButton.isEnabled()
-    
-    if current_index < 0:
-        # Only update if state changed
-        if current_text != LAUNCH_CONTAINER_BUTTON_TEXT or current_enabled:
-            self.toggleButton.setText(LAUNCH_CONTAINER_BUTTON_TEXT)
-            self.apply_button_style(self.toggleButton, 'toggle_disabled')
-            self.toggleButton.setEnabled(False)
-        return
-        
-    # Get the actual container name from the item data
-    container_name = self.container_combo.itemData(current_index)
-    if not container_name:
-        # Only update if state changed
-        if current_text != LAUNCH_CONTAINER_BUTTON_TEXT or current_enabled:
-            self.toggleButton.setText(LAUNCH_CONTAINER_BUTTON_TEXT)
-            self.apply_button_style(self.toggleButton, 'toggle_disabled')
-            self.toggleButton.setEnabled(False)
-        return
-    
-    # Check if container exists in Docker
-    container_exists = self.container_exists_in_docker(container_name)
-    
-    # If container doesn't exist in Docker but exists in config, show launch button
-    if not container_exists:
-        config_container = self.config_manager.get_container(container_name)
-        if config_container:
-            # Only update if state changed
-            if current_text != LAUNCH_CONTAINER_BUTTON_TEXT or not current_enabled:
-                self.toggleButton.setText(LAUNCH_CONTAINER_BUTTON_TEXT)
-                self.apply_button_style(self.toggleButton, 'toggle_start')
-                self.toggleButton.setEnabled(True)
-            return
-    
-    # Make sure the docker handler has the correct container name
-    self.docker_handler.set_container_name(container_name)
-    
-    # Check if the container is running using docker_handler directly
-    is_running = self.docker_handler.is_container_running()
-    
-    # Determine the new state
-    new_text = STOP_CONTAINER_BUTTON_TEXT if is_running else LAUNCH_CONTAINER_BUTTON_TEXT
-    new_style = 'toggle_stop' if is_running else 'toggle_start'
-    
-    # Update text if changed
-    if current_text != new_text:
-        self.toggleButton.setText(new_text)
-    
-    # Always apply the style to ensure it updates when theme changes
-    self.apply_button_style(self.toggleButton, new_style)
-    self.toggleButton.setEnabled(True)
-
-  def _perform_container_launch(self, container_name, volume_name):
-    """Perform the actual container launch operation after the dialog is shown."""
-    try:
-        # Clear info displays
-        self._clear_info_display()
-        self.loading_indicator.start()
-        
-        # Update loading dialog with progress
-        if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None :
-            self.launcher_dialog.update_progress("Preparing Docker command...")
-        
-        # Get the Docker command that will be executed (for logging purposes only)
-        command = self.docker_handler.get_launch_command(volume_name=volume_name)
-        # Log the command without debug flag to ensure it's always visible
-        self.add_log(f'Docker command: {" ".join(command)}', color="blue")
-        
-        # First check if the container already exists
-        container_exists = self.container_exists_in_docker(container_name)
-        if container_exists:
-            # Update loading dialog with progress
-            if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None :
-                self.launcher_dialog.update_progress(f"Removing existing container '{container_name}' before launch...")
-            self.add_log(f"Container {container_name} already exists, removing it first", color="yellow")
-        
-        # Check if Docker image exists
-        image_exists = self.docker_handler._ensure_image_exists()
-        if not image_exists:
-            # Close the existing launcher dialog if it's open
-            if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None :
-                self.launcher_dialog.safe_close()
-                QTimer.singleShot(500, lambda: setattr(self, 'launcher_dialog', None) if hasattr(self, 'launcher_dialog') else None)
-            
-            # Show Docker pull dialog
-            from widgets.DockerPullDialog import DockerPullDialog
-            self.docker_pull_dialog = DockerPullDialog(self)
-            
-            # Connect the pull_complete signal to handle completion
-            self.docker_pull_dialog.pull_complete.connect(self._on_docker_pull_complete)
-            
-            # Store volume_name for later use after pull completes
-            self._pending_volume_name = volume_name
-            
-            # Show the dialog
-            self.docker_pull_dialog.show()
-            
-            # Define callbacks for Docker pull
-            def on_pull_success(result):
-                stdout, stderr, return_code = result
-                # No need to process lines here as they're processed in real-time by on_pull_output
-                
-                # If pull completed successfully
-                if return_code == 0:
-                    if hasattr(self, 'docker_pull_dialog') and self.docker_pull_dialog is not None :
-                        self.docker_pull_dialog.set_pull_complete(True, "Docker image pulled successfully")
-                else:
-                    error_msg = f"Failed to pull Docker image: {stderr}"
-                    self.add_log(error_msg, color="red")
-                    if hasattr(self, 'docker_pull_dialog') and self.docker_pull_dialog is not None :
-                        self.docker_pull_dialog.set_pull_complete(False, error_msg)
-            
-            def on_pull_error(error_msg):
-                self.add_log(f"Error pulling Docker image: {error_msg}", color="red")
-                if hasattr(self, 'docker_pull_dialog') and self.docker_pull_dialog is not None :
-                    self.docker_pull_dialog.set_pull_complete(False, error_msg)
-            
-            def on_pull_output(line):
-                # Process each line of output in real-time to update the dialog
-                if hasattr(self, 'docker_pull_dialog') and self.docker_pull_dialog is not None :
-                    self.docker_pull_dialog.update_pull_progress(line)
-                    # Process events to keep UI responsive
-                    QApplication.processEvents()
-            
-            # Start the Docker pull operation with real-time output processing
-            self.docker_handler.pull_image(on_pull_success, on_pull_error, on_pull_output)
-            
-            # Exit this method early - we'll continue after the pull completes
-            return
-        
-        # Update loading dialog with progress
-        if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None :
-            self.launcher_dialog.update_progress("Launching Docker container...")
-        
-        # Define success callback for threaded operation
-        def on_launch_success(result):
-            stdout, stderr, return_code = result
-            if return_code != 0:
-                # Handle error case
-                error_msg = f"Failed to launch container: {stderr}"
-                self.add_log(error_msg, color="red")
-                self.toast.show_notification(NotificationType.ERROR, error_msg)
-                return
-            
-            # Update loading dialogs with progress    
-            if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None :
-                self.launcher_dialog.update_progress("Container launched, updating configuration...")
-            elif hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible():
-                self.startup_dialog.update_progress("Container launched, updating configuration...")
-            
-            # Update last used timestamp in config
-            from datetime import datetime
-            self.config_manager.update_last_used(container_name, datetime.now().isoformat())
-            
-            # Update volume name in config if it's not already set
-            container_config = self.config_manager.get_container(container_name)
-            if container_config and not container_config.volume:
-                self.config_manager.update_volume(container_name, volume_name)
-                self.add_log(f"Updated volume name in config: {volume_name}", debug=True)
-            
-            # Update loading dialogs with progress
-            if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None :
-                self.launcher_dialog.update_progress("Updating user interface...")
-            elif hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible():
-                self.startup_dialog.update_progress("Updating user interface...")
-            
-            # Update UI after launch
-            self.post_launch_setup()
-            self.refresh_local_address()
-            self.plot_data()
-            self.update_toggle_button_text()
-            
-            # Stop loading indicator
-            self.loading_indicator.stop()
-            
-            # Update loading dialogs with completion message
-            if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None :
-                self.launcher_dialog.update_progress("Container launched successfully!")
-            elif hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible():
-                self.startup_dialog.update_progress("Container launched successfully!")
-            
-            # Close the loading dialogs immediately
-            launcher_dialog_visible = hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None 
-            if launcher_dialog_visible:
-                self.launcher_dialog.safe_close()
-                # Schedule removal of the reference after a delay
-                QTimer.singleShot(500, lambda: setattr(self, 'launcher_dialog', None) if hasattr(self, 'launcher_dialog') else None)
-            
-            startup_dialog_visible = hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible()
-            if startup_dialog_visible:
-                self.startup_dialog.safe_close()
-                # Schedule removal of the reference after a delay
-                QTimer.singleShot(500, lambda: setattr(self, 'startup_dialog', None) if hasattr(self, 'startup_dialog') else None)
-            
-            # Show success notification
-            # Get node alias from config if available
-            node_display_name = container_name
-            container_config = self.config_manager.get_container(container_name)
-            if container_config and container_config.node_alias:
-                node_display_name = container_config.node_alias
-                self.toast.show_notification(NotificationType.SUCCESS, f"Node '{node_display_name}' launched successfully")
-            else:
-                self.toast.show_notification(NotificationType.SUCCESS, "Edge Node launched successfully")
-        
-        # Define error callback for threaded operation
-        def on_launch_error(error_msg):
-            # Stop loading indicator on error
-            self.loading_indicator.stop()
-            
-            # Check if this is a "container already exists" error
-            if "Conflict" in error_msg and "is already in use" in error_msg:
-                # Update loading dialogs with specific error message
-                if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None :
-                    self.launcher_dialog.update_progress("Container name conflict detected. Trying again with container removal...")
-                elif hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible():
-                    self.startup_dialog.update_progress("Container name conflict detected. Trying again with container removal...")
-                
-                # Try to forcefully remove the container and retry launch
-                try:
-                    # Extract container ID from error message if possible
-                    import re
-                    container_id_match = re.search(r'by container "([^"]+)"', error_msg)
-                    container_id = container_id_match.group(1) if container_id_match else None
-                    
-                    if container_id:
-                        self.add_log(f"Attempting to forcefully remove container with ID: {container_id}", color="yellow")
-                        # Run docker rm -f directly 
-                        remove_cmd = ['docker', 'rm', '-f', container_id]
-                        result = subprocess.run(remove_cmd, capture_output=True, text=True)
-                        if result.returncode == 0:
-                            self.add_log("Successfully removed conflicting container, retrying launch", color="blue")
-                            # Wait to ensure Docker has released the resources
-                            import time
-                            time.sleep(1)
-                            # Retry the launch
-                            self.docker_handler.launch_container_threaded(volume_name, on_launch_success, on_launch_error)
-                            return
-                except Exception as retry_err:
-                    self.add_log(f"Failed to resolve container conflict: {retry_err}", color="red")
-            
-            # Update loading dialogs with error message
-            if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None :
-                self.launcher_dialog.update_progress(f"Error: {error_msg}")
-            elif hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible():
-                self.startup_dialog.update_progress(f"Error: {error_msg}")
-            
-            # Close the loading dialogs immediately
-            launcher_dialog_visible = hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None 
-            if launcher_dialog_visible:
-                self.launcher_dialog.safe_close()
-                # Schedule removal of the reference after a delay
-                QTimer.singleShot(500, lambda: setattr(self, 'launcher_dialog', None) if hasattr(self, 'launcher_dialog') else None)
-            
-            startup_dialog_visible = hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible()
-            if startup_dialog_visible:
-                self.startup_dialog.safe_close()
-                # Schedule removal of the reference after a delay
-                QTimer.singleShot(500, lambda: setattr(self, 'startup_dialog', None) if hasattr(self, 'startup_dialog') else None)
-                
-            error_msg = f"Failed to launch container: {error_msg}"
-            self.add_log(error_msg, color="red")
-            self.toast.show_notification(NotificationType.ERROR, error_msg)
-        
-        # Launch the container in a thread
-        self.docker_handler.launch_container_threaded(volume_name, on_launch_success, on_launch_error)
+        self.add_log("Updated system resources display", debug=True)
         
     except Exception as e:
-        # Stop loading indicator on error
-        self.loading_indicator.stop()
-        
-        # Close the startup dialog if it exists
-        startup_dialog_visible = hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible()
-        if startup_dialog_visible:
-            self.startup_dialog.safe_close()
-            # Schedule removal of the reference after a delay
-            QTimer.singleShot(500, lambda: setattr(self, 'startup_dialog', None) if hasattr(self, 'startup_dialog') else None)
-            
-        # Close the launcher dialog if it exists
-        launcher_dialog_visible = hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None 
-        if launcher_dialog_visible:
-            self.launcher_dialog.safe_close()
-            # Schedule removal of the reference after a delay
-            QTimer.singleShot(500, lambda: setattr(self, 'launcher_dialog', None) if hasattr(self, 'launcher_dialog') else None)
-            
-        error_msg = f"Failed to launch container: {str(e)}"
-        self.add_log(error_msg, color="red")
-        self.toast.show_notification(NotificationType.ERROR, error_msg)
+        self.add_log(f"Error updating resources display: {str(e)}", debug=True)
+        # Set fallback values on error
+        self.memoryDisplay.setText(f"{MEMORY_LABEL} {MEMORY_NOT_AVAILABLE}")
+        self.vcpusDisplay.setText(f"{VCPUS_LABEL} {VCPUS_NOT_AVAILABLE}")
+        self.storageDisplay.setText(f"{STORAGE_LABEL} {STORAGE_NOT_AVAILABLE}")
