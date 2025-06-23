@@ -630,6 +630,9 @@ class DockerCommandHandler:
         # Connect signals to slots that will safely emit signals in the main thread
         thread.finished.connect(lambda: self._handle_thread_finished(thread, callback, error_callback))
         
+        # Track the thread for cleanup
+        self._track_thread(thread)
+        
         self.threads.append(thread)  # Keep reference to prevent GC
         thread.start()
 
@@ -910,17 +913,20 @@ class DockerCommandHandler:
             return False
 
     def _execute_direct_threaded(self, command: list, callback=None, error_callback=None) -> None:
-        """Execute a command directly in a thread and call the callback with the result.
+        """Execute a direct Docker command in a background thread.
         
         Args:
-            command: Command to execute as a list of strings
-            callback: Function to call with the result (stdout, stderr, return_code)
-            error_callback: Function to call on error with error message
+            command: Docker command as list of strings
+            callback: Success callback function
+            error_callback: Error callback function
         """
         thread = DockerDirectCommandThread(command, self.remote_ssh_command)
         
-        # Connect signals to slots that will safely emit signals in the main thread
+        # Connect finished signal
         thread.finished.connect(lambda: self._handle_direct_thread_finished(thread, callback, error_callback))
+        
+        # Track the thread for cleanup
+        self._track_thread(thread)
         
         self.threads.append(thread)  # Keep reference to prevent GC
         thread.start()
@@ -1080,3 +1086,72 @@ class DockerCommandHandler:
         except Exception:
             # Any error during execution means no GPU
             return False
+
+    def terminate_monitoring_operations(self):
+        """Terminate only monitoring/API operations, not actual Docker containers"""
+        try:
+            # Terminate only monitoring threads (like get_node_info, get_node_history)
+            # Do NOT terminate container start/stop operations
+            if hasattr(self, '_active_threads'):
+                monitoring_threads = []
+                for thread in self._active_threads:
+                    if thread and thread.isRunning():
+                        # Only terminate threads that are doing monitoring operations
+                        # Leave container lifecycle operations alone
+                        if hasattr(thread, 'command_name'):
+                            command = getattr(thread, 'command_name', '')
+                            # Only terminate monitoring commands, not container operations
+                            if command in ['get_node_info', 'get_node_history', 'get_allowed', 
+                                         'get_startup_config', 'get_config_app']:
+                                monitoring_threads.append(thread)
+                        else:
+                            # If we can't identify the thread type, leave it alone to be safe
+                            pass
+                
+                # Terminate only the monitoring threads
+                for thread in monitoring_threads:
+                    try:
+                        thread.terminate_process()
+                        thread.quit()
+                        thread.wait(500)  # Wait up to 500ms
+                    except:
+                        pass
+                
+                # Remove terminated threads from active list
+                self._active_threads = [t for t in self._active_threads 
+                                      if t and t.isRunning() and t not in monitoring_threads]
+                
+            logging.info("Monitoring operations terminated, containers left running")
+        except Exception as e:
+            logging.error(f"Error terminating monitoring operations: {e}")
+
+    def terminate_all_operations(self):
+        """Terminate all Docker API operations but preserve running containers"""
+        try:
+            # Terminate any running command threads (API calls only)
+            if hasattr(self, '_active_threads'):
+                for thread in self._active_threads:
+                    if thread and thread.isRunning():
+                        try:
+                            thread.terminate_process()
+                            thread.quit()
+                            thread.wait(1000)  # Wait up to 1 second
+                        except:
+                            pass
+            
+            # Clear the active threads list
+            if hasattr(self, '_active_threads'):
+                self._active_threads.clear()
+                
+            logging.info("All Docker API operations terminated, containers preserved")
+        except Exception as e:
+            logging.error(f"Error terminating Docker operations: {e}")
+
+    def _track_thread(self, thread):
+        """Track a thread for later cleanup"""
+        if not hasattr(self, '_active_threads'):
+            self._active_threads = []
+        self._active_threads.append(thread)
+        
+        # Clean up finished threads
+        self._active_threads = [t for t in self._active_threads if t and t.isRunning()]

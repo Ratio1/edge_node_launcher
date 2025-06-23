@@ -134,6 +134,10 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     self.__last_auto_update_check = 0
     self.__last_docker_image_check = 0
     
+    # Track update process state to prevent duplicate notifications
+    self.__update_in_progress = False
+    self.__update_dialog_shown = False
+    
     self.__version__ = __version__
     self.__last_timesteps = []
     self._icon = get_icon_from_base64(ICON_BASE64)
@@ -777,6 +781,97 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
 
     # Update resources display for theme consistency
     self.update_resources_display()
+
+  def closeEvent(self, event):
+    """Handle application close event with proper cleanup."""
+    try:
+        self.add_log("Starting application shutdown sequence...", debug=True)
+        
+        # Stop any running timers first
+        if hasattr(self, 'timer') and self.timer:
+            self.timer.stop()
+            self.add_log("Stopped main refresh timer", debug=True)
+        
+        # Stop any loading indicators
+        if hasattr(self, 'loading_indicator') and self.loading_indicator:
+            self.loading_indicator.stop()
+            self.add_log("Stopped loading indicators", debug=True)
+        
+        # Close any open dialogs forcefully
+        dialog_attrs = ['startup_dialog', 'launcher_dialog', 'toggle_dialog', 'docker_pull_dialog']
+        for dialog_attr in dialog_attrs:
+            if hasattr(self, dialog_attr):
+                dialog = getattr(self, dialog_attr)
+                if dialog and hasattr(dialog, 'close'):
+                    try:
+                        dialog.close()
+                        self.add_log(f"Closed {dialog_attr}", debug=True)
+                    except Exception as e:
+                        self.add_log(f"Error closing {dialog_attr}: {str(e)}", debug=True)
+        
+        # Force close any remaining child widgets
+        try:
+            for child in self.findChildren(QDialog):
+                if child and child.isVisible():
+                    child.close()
+                    self.add_log(f"Force closed dialog: {type(child).__name__}", debug=True)
+        except Exception as e:
+            self.add_log(f"Error force closing dialogs: {str(e)}", debug=True)
+        
+        # Process any remaining events
+        try:
+            QApplication.processEvents()
+            self.add_log("Processed remaining events", debug=True)
+        except:
+            pass
+        
+        self.add_log("Application shutdown completed successfully", debug=True)
+        
+    except Exception as e:
+        self.add_log(f"Error during application close: {str(e)}", debug=True)
+        # Continue with shutdown even if there are errors
+    
+    # Always accept the close event to ensure shutdown
+    event.accept()
+
+  def force_application_exit(self):
+    """Force the application to exit immediately - used during updates."""
+    try:
+        self.add_log("FORCE EXIT: Initiating immediate application shutdown for update", color="yellow")
+        
+        # Stop only GUI timers
+        if hasattr(self, 'timer') and self.timer:
+            self.timer.stop()
+        
+        # Close all windows
+        app = QApplication.instance()
+        if app:
+            app.closeAllWindows()
+        
+        # Force exit at OS level (only this GUI process)
+        import os
+        import signal
+        
+        if os.name == 'nt':  # Windows
+            try:
+                import subprocess
+                current_pid = os.getpid()
+                # Kill only our GUI process
+                subprocess.run(['taskkill', '/F', '/PID', str(current_pid)], 
+                             capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            except:
+                os._exit(0)
+        else:
+            # Unix systems
+            try:
+                os.kill(os.getpid(), signal.SIGTERM)
+            except:
+                os._exit(0)
+                
+    except:
+        # Absolute last resort
+        import os
+        os._exit(0)
 
   def update_copy_button_icons(self):
     """Update the copy button icons based on the current theme."""
@@ -1528,8 +1623,8 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     # Update system resources display
     self.update_resources_display()
 
-    # Check for updates periodically
-    if (time() - self.__last_auto_update_check) > AUTO_UPDATE_CHECK_INTERVAL:
+    # Check for updates periodically - but only if no update is already in progress
+    if not self.__update_in_progress and (time() - self.__last_auto_update_check) > AUTO_UPDATE_CHECK_INTERVAL:
       verbose = self.__last_auto_update_check == 0
       self.__last_auto_update_check = time()
       self.check_for_updates(verbose=verbose or FULL_DEBUG)
@@ -2985,3 +3080,135 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
         self.memoryDisplay.setText(f"{MEMORY_LABEL} {MEMORY_NOT_AVAILABLE}")
         self.vcpusDisplay.setText(f"{VCPUS_LABEL} {VCPUS_NOT_AVAILABLE}")
         self.storageDisplay.setText(f"{STORAGE_LABEL} {STORAGE_NOT_AVAILABLE}")
+
+  def check_for_updates(self, verbose=True):
+    """Override the _UpdaterMixin check_for_updates method to manage update state and prevent multiple dialogs."""
+    # Don't check for updates if one is already in progress or dialog is shown
+    if self.__update_in_progress or self.__update_dialog_shown:
+        if verbose:
+            self.add_log("Update check skipped - update already in progress or dialog is shown", debug=True)
+        return
+    
+    # Set the flags to indicate update process is starting
+    self.__update_in_progress = True
+    
+    try:
+        # Implement the update check logic directly here to control dialog display
+        latest_version, download_urls = self.get_latest_release_version()
+        latest_version = latest_version.lstrip('v').strip().replace('"', '').replace("'", '')
+        
+        if verbose:
+            self.add_log(f'Obtained latest version: {latest_version}')
+        
+        # Compare versions using the parent method
+        if self._compare_versions(CURRENT_VERSION, latest_version):
+            # Only show dialog if one isn't already shown
+            if not self.__update_dialog_shown:
+                self.__update_dialog_shown = True
+                
+                try:
+                    from PyQt5.QtWidgets import QMessageBox
+                    from ver import __VER__ as CURRENT_VERSION
+                    
+                    reply = QMessageBox.question(
+                        self, 'Update Available',
+                        f'A new version v{latest_version} is available (current v{CURRENT_VERSION}). Do you want to update?',
+                        QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes
+                    )
+                    
+                    if reply == QMessageBox.Yes:
+                        # Continue with the update process by calling the parent's update logic
+                        self._proceed_with_update(latest_version, download_urls)
+                    else:
+                        self.add_log("Update declined by user")
+                        
+                finally:
+                    # Reset dialog flag when dialog is closed
+                    self.__update_dialog_shown = False
+            else:
+                self.add_log("Update dialog already shown, skipping duplicate", debug=True)
+        else:
+            if verbose:
+                self.add_log("You are already using the latest version. Current: {}, Online: {}".format(CURRENT_VERSION, latest_version))
+                
+    except Exception as e:
+        self.add_log(f"Error during update check: {str(e)}", color="red")
+        # Reset dialog flag in case of error
+        self.__update_dialog_shown = False
+    finally:
+        # Always reset the progress flag when update check is complete
+        self.__update_in_progress = False
+
+  def _proceed_with_update(self, latest_version, download_urls):
+    """Handle the update process after user confirmation."""
+    import platform
+    from PyQt5.QtWidgets import QMessageBox
+    
+    platform_system = platform.system()
+    
+    try:
+        # Get download URL based on platform
+        download_url = download_urls.get(platform_system)
+        
+        if not download_url:
+            self.add_log(f"No download URL available for platform: {platform_system}")
+            QMessageBox.information(self, 'Update Not Available', f'No update available for your OS: {platform_system}.')
+            return
+            
+    except Exception as e:
+        self.add_log(f"Failed to find download URL for your platform: {e}")
+        QMessageBox.warning(self, 'Update Error', f'Could not find a compatible download for your system: {platform_system}.')
+        return
+    
+    # Use user's temp directory for downloads to avoid permission issues
+    import sys
+    import os
+    if sys.platform == "win32":
+        download_dir = os.path.join(os.environ.get('LOCALAPPDATA') or os.environ.get('APPDATA'), 'EdgeNodeLauncher', 'updates')
+    else:
+        download_dir = os.path.join(os.getcwd(), 'downloads')
+        
+    os.makedirs(download_dir, exist_ok=True)
+    self.add_log(f'Downloading update from {download_url} to {download_dir}...')
+    
+    # Download the update
+    try:
+        downloaded_file = self._download_update(download_url, download_dir)
+        
+        # For macOS, extract the zip file
+        if platform_system == 'Darwin':
+            self.add_log(f'Extracting update from {downloaded_file}...')
+            self._extract_zip(downloaded_file, os.path.dirname(downloaded_file))
+        
+        # Show final confirmation before proceeding with update
+        reply = QMessageBox.question(
+            self, 'Ready to Update', 
+            'The update has been downloaded and is ready to install.\n\n' +
+            'The application will close and update itself automatically.\n' +
+            'This process may take 30-60 seconds.\n\n' +
+            'Do you want to proceed with the update now?',
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes
+        )
+        
+        if reply == QMessageBox.Yes:
+            # Replace the executable
+            self._replace_executable(downloaded_file, 'EdgeNodeLauncher')
+        else:
+            self.add_log("Update cancelled by user")
+            QMessageBox.information(self, 'Update Cancelled', 'The update has been cancelled. You can update later from the menu.')
+            
+    except Exception as e:
+        self.add_log(f"Error during download or installation: {str(e)}")
+        QMessageBox.critical(self, 'Update Failed', f'Failed to download or install the update: {str(e)}')
+
+  def manual_check_for_updates(self):
+    """Manually trigger an update check (e.g., from a menu or button)."""
+    if self.__update_in_progress or self.__update_dialog_shown:
+        self.toast.show_notification(
+            NotificationType.INFO, 
+            "Update check is already in progress. Please wait..."
+        )
+        return
+    
+    self.add_log("Manual update check requested by user", debug=True)
+    self.check_for_updates(verbose=True)
