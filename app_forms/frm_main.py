@@ -215,6 +215,9 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     # Initialize system resources display
     self.update_resources_display()
 
+    # Perform initial update check on startup
+    self.check_for_updates(verbose=True)
+
   def init_button_colors(self):
     """Initialize or update button colors based on current theme"""
     is_dark = self._current_stylesheet == DARK_STYLESHEET

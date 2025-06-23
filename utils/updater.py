@@ -21,13 +21,23 @@ class _UpdaterMixin:
     latest_release = response.json()
     latest_version = latest_release['tag_name']
     assets = latest_release['assets']
+    
+    # Helper function to safely find assets
+    def find_asset_url(condition):
+      try:
+        return next(asset['browser_download_url'] for asset in assets if condition(asset))
+      except StopIteration:
+        return None
+    
     download_urls = {
-      'Windows': next(asset['browser_download_url'] for asset in assets if 'Windows' in asset['name'] and '.exe' in asset['name']),
-      'Linux_Ubuntu_24.04': next(asset['browser_download_url'] for asset in assets if 'Ubuntu-24.04' in asset['name']),
-      'Linux_Ubuntu_22.04': next(asset['browser_download_url'] for asset in assets if 'Ubuntu-22.04' in asset['name']),
-      'Linux_Ubuntu_20.04': next(asset['browser_download_url'] for asset in assets if 'Ubuntu-20.04' in asset['name']),
-      'Darwin': next(asset['browser_download_url'] for asset in assets if 'OSX' in asset['name'] and '.zip' in asset['name']),
+      'Windows': find_asset_url(lambda asset: 'Windows' in asset['name'] and '.exe' in asset['name']),
+      'Linux_Ubuntu_22.04': find_asset_url(lambda asset: 'Ubuntu-22.04' in asset['name']),
+      'Darwin': find_asset_url(lambda asset: 'OSX' in asset['name'] and '.zip' in asset['name']),
     }
+    
+    # Remove None values (assets that don't exist)
+    download_urls = {k: v for k, v in download_urls.items() if v is not None}
+    
     return latest_version, download_urls
 
   def _compare_versions(self, current_version, latest_version):
@@ -349,24 +359,38 @@ echo Done.
         if reply == QMessageBox.Yes:
           platform_system = platform.system()
           try:
+            download_url = None
             if platform_system == 'Windows':
-              download_url = download_urls['Windows']
+              download_url = download_urls.get('Windows')
             elif platform_system == 'Linux':
               if '24.04' in platform.version():
-                download_url = download_urls['Linux_Ubuntu_24.04']
+                download_url = download_urls.get('Linux_Ubuntu_24.04')
               elif '22.04' in platform.version():
-                download_url = download_urls['Linux_Ubuntu_22.04']
+                download_url = download_urls.get('Linux_Ubuntu_22.04')
               elif '20.04' in platform.version():
-                download_url = download_urls['Linux_Ubuntu_20.04']
+                download_url = download_urls.get('Linux_Ubuntu_20.04')
               else:
-                QMessageBox.information(None, 'Update Not Available', f'No update available for your Linux version: {platform.version()}.')
-                return
+                # Try to use any available Linux version as fallback
+                linux_urls = [url for key, url in download_urls.items() if key.startswith('Linux_Ubuntu_')]
+                if linux_urls:
+                  download_url = linux_urls[0]  # Use the first available Linux version
+                  self.add_log(f'Using fallback Linux version for {platform.version()}', debug=True)
+                else:
+                  QMessageBox.information(None, 'Update Not Available', f'No update available for your Linux version: {platform.version()}.')
+                  return
             elif platform_system == 'Darwin':  # macOS
-              download_url = download_urls['Darwin']
+              download_url = download_urls.get('Darwin')
             else:
               QMessageBox.information(None, 'Update Not Available', f'No update available for your OS: {platform_system}.')
               return
-          except (KeyError, StopIteration) as e:
+            
+            # Check if we found a valid download URL
+            if not download_url:
+              self.add_log(f"No download URL found for platform: {platform_system}")
+              QMessageBox.warning(None, 'Update Error', f'Could not find a compatible download for your system: {platform_system}.')
+              return
+              
+          except Exception as e:
             self.add_log(f"Failed to find download URL for your platform: {e}")
             QMessageBox.warning(None, 'Update Error', f'Could not find a compatible download for your system: {platform_system}.')
             return
