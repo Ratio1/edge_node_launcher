@@ -134,6 +134,9 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     self.__last_auto_update_check = 0
     self.__last_docker_image_check = 0
     
+    # Track update process state to prevent duplicate notifications
+    self.__update_in_progress = False
+    
     self.__version__ = __version__
     self.__last_timesteps = []
     self._icon = get_icon_from_base64(ICON_BASE64)
@@ -1619,8 +1622,8 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     # Update system resources display
     self.update_resources_display()
 
-    # Check for updates periodically
-    if (time() - self.__last_auto_update_check) > AUTO_UPDATE_CHECK_INTERVAL:
+    # Check for updates periodically - but only if no update is already in progress
+    if not self.__update_in_progress and (time() - self.__last_auto_update_check) > AUTO_UPDATE_CHECK_INTERVAL:
       verbose = self.__last_auto_update_check == 0
       self.__last_auto_update_check = time()
       self.check_for_updates(verbose=verbose or FULL_DEBUG)
@@ -3076,3 +3079,37 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
         self.memoryDisplay.setText(f"{MEMORY_LABEL} {MEMORY_NOT_AVAILABLE}")
         self.vcpusDisplay.setText(f"{VCPUS_LABEL} {VCPUS_NOT_AVAILABLE}")
         self.storageDisplay.setText(f"{STORAGE_LABEL} {STORAGE_NOT_AVAILABLE}")
+
+  def check_for_updates(self, verbose=True):
+    """Override the _UpdaterMixin check_for_updates method to manage update state."""
+    # Don't check for updates if one is already in progress
+    if self.__update_in_progress:
+        if verbose:
+            self.add_log("Update check skipped - update already in progress", debug=True)
+        return
+    
+    # Set the flag to indicate update process is starting
+    self.__update_in_progress = True
+    
+    try:
+        # Call the parent method from _UpdaterMixin
+        super().check_for_updates(verbose)
+    except Exception as e:
+        self.add_log(f"Error during update check: {str(e)}", color="red")
+    finally:
+        # Always reset the flag when update check is complete
+        # Note: If user proceeds with actual update, the application will exit
+        # so this flag reset only happens if user cancels or no update is available
+        self.__update_in_progress = False
+
+  def manual_check_for_updates(self):
+    """Manually trigger an update check (e.g., from a menu or button)."""
+    if self.__update_in_progress:
+        self.toast.show_notification(
+            NotificationType.INFO, 
+            "Update check is already in progress. Please wait..."
+        )
+        return
+    
+    self.add_log("Manual update check requested by user", debug=True)
+    self.check_for_updates(verbose=True)
