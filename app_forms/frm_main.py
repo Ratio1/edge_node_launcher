@@ -136,6 +136,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     
     # Track update process state to prevent duplicate notifications
     self.__update_in_progress = False
+    self.__update_dialog_shown = False
     
     self.__version__ = __version__
     self.__last_timesteps = []
@@ -3081,30 +3082,128 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
         self.storageDisplay.setText(f"{STORAGE_LABEL} {STORAGE_NOT_AVAILABLE}")
 
   def check_for_updates(self, verbose=True):
-    """Override the _UpdaterMixin check_for_updates method to manage update state."""
-    # Don't check for updates if one is already in progress
-    if self.__update_in_progress:
+    """Override the _UpdaterMixin check_for_updates method to manage update state and prevent multiple dialogs."""
+    # Don't check for updates if one is already in progress or dialog is shown
+    if self.__update_in_progress or self.__update_dialog_shown:
         if verbose:
-            self.add_log("Update check skipped - update already in progress", debug=True)
+            self.add_log("Update check skipped - update already in progress or dialog is shown", debug=True)
         return
     
-    # Set the flag to indicate update process is starting
+    # Set the flags to indicate update process is starting
     self.__update_in_progress = True
     
     try:
-        # Call the parent method from _UpdaterMixin
-        super().check_for_updates(verbose)
+        # Implement the update check logic directly here to control dialog display
+        latest_version, download_urls = self.get_latest_release_version()
+        latest_version = latest_version.lstrip('v').strip().replace('"', '').replace("'", '')
+        
+        if verbose:
+            self.add_log(f'Obtained latest version: {latest_version}')
+        
+        # Compare versions using the parent method
+        if self._compare_versions(CURRENT_VERSION, latest_version):
+            # Only show dialog if one isn't already shown
+            if not self.__update_dialog_shown:
+                self.__update_dialog_shown = True
+                
+                try:
+                    from PyQt5.QtWidgets import QMessageBox
+                    from ver import __VER__ as CURRENT_VERSION
+                    
+                    reply = QMessageBox.question(
+                        self, 'Update Available',
+                        f'A new version v{latest_version} is available (current v{CURRENT_VERSION}). Do you want to update?',
+                        QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes
+                    )
+                    
+                    if reply == QMessageBox.Yes:
+                        # Continue with the update process by calling the parent's update logic
+                        self._proceed_with_update(latest_version, download_urls)
+                    else:
+                        self.add_log("Update declined by user")
+                        
+                finally:
+                    # Reset dialog flag when dialog is closed
+                    self.__update_dialog_shown = False
+            else:
+                self.add_log("Update dialog already shown, skipping duplicate", debug=True)
+        else:
+            if verbose:
+                self.add_log("You are already using the latest version. Current: {}, Online: {}".format(CURRENT_VERSION, latest_version))
+                
     except Exception as e:
         self.add_log(f"Error during update check: {str(e)}", color="red")
+        # Reset dialog flag in case of error
+        self.__update_dialog_shown = False
     finally:
-        # Always reset the flag when update check is complete
-        # Note: If user proceeds with actual update, the application will exit
-        # so this flag reset only happens if user cancels or no update is available
+        # Always reset the progress flag when update check is complete
         self.__update_in_progress = False
+
+  def _proceed_with_update(self, latest_version, download_urls):
+    """Handle the update process after user confirmation."""
+    import platform
+    from PyQt5.QtWidgets import QMessageBox
+    
+    platform_system = platform.system()
+    
+    try:
+        # Get download URL based on platform
+        download_url = download_urls.get(platform_system)
+        
+        if not download_url:
+            self.add_log(f"No download URL available for platform: {platform_system}")
+            QMessageBox.information(self, 'Update Not Available', f'No update available for your OS: {platform_system}.')
+            return
+            
+    except Exception as e:
+        self.add_log(f"Failed to find download URL for your platform: {e}")
+        QMessageBox.warning(self, 'Update Error', f'Could not find a compatible download for your system: {platform_system}.')
+        return
+    
+    # Use user's temp directory for downloads to avoid permission issues
+    import sys
+    import os
+    if sys.platform == "win32":
+        download_dir = os.path.join(os.environ.get('LOCALAPPDATA') or os.environ.get('APPDATA'), 'EdgeNodeLauncher', 'updates')
+    else:
+        download_dir = os.path.join(os.getcwd(), 'downloads')
+        
+    os.makedirs(download_dir, exist_ok=True)
+    self.add_log(f'Downloading update from {download_url} to {download_dir}...')
+    
+    # Download the update
+    try:
+        downloaded_file = self._download_update(download_url, download_dir)
+        
+        # For macOS, extract the zip file
+        if platform_system == 'Darwin':
+            self.add_log(f'Extracting update from {downloaded_file}...')
+            self._extract_zip(downloaded_file, os.path.dirname(downloaded_file))
+        
+        # Show final confirmation before proceeding with update
+        reply = QMessageBox.question(
+            self, 'Ready to Update', 
+            'The update has been downloaded and is ready to install.\n\n' +
+            'The application will close and update itself automatically.\n' +
+            'This process may take 30-60 seconds.\n\n' +
+            'Do you want to proceed with the update now?',
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes
+        )
+        
+        if reply == QMessageBox.Yes:
+            # Replace the executable
+            self._replace_executable(downloaded_file, 'EdgeNodeLauncher')
+        else:
+            self.add_log("Update cancelled by user")
+            QMessageBox.information(self, 'Update Cancelled', 'The update has been cancelled. You can update later from the menu.')
+            
+    except Exception as e:
+        self.add_log(f"Error during download or installation: {str(e)}")
+        QMessageBox.critical(self, 'Update Failed', f'Failed to download or install the update: {str(e)}')
 
   def manual_check_for_updates(self):
     """Manually trigger an update check (e.g., from a menu or button)."""
-    if self.__update_in_progress:
+    if self.__update_in_progress or self.__update_dialog_shown:
         self.toast.show_notification(
             NotificationType.INFO, 
             "Update check is already in progress. Please wait..."
