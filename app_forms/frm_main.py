@@ -1262,6 +1262,9 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     
     # If not running, check if we have cached address data in config
     if not is_running:
+      # Check if we're in a loading state (container starting up)
+      is_loading = hasattr(self, 'loading_indicator') and self.loading_indicator.isVisible()
+      
       config_container = self.config_manager.get_container(container_name)
       if config_container and config_container.node_address:
         # If we have cached data, keep displaying it but indicate node is not running
@@ -1294,9 +1297,16 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
       else:
         # No cached data and not running
         if not hasattr(self, 'node_addr') or not self.node_addr:
-          self.addressDisplay.setText('Address: Node not running')
-          self.ethAddressDisplay.setText('ETH Address: Not available')
-          self.nameDisplay.setText('')
+          if is_loading:
+            # Container is starting up - show loading messages
+            self.addressDisplay.setText('Address: Starting up...')
+            self.ethAddressDisplay.setText('ETH Address: Starting up...')
+            self.nameDisplay.setText('Name: Loading...')
+          else:
+            # Container is stopped - show neutral status
+            self.addressDisplay.setText('Address: Node not running')
+            self.ethAddressDisplay.setText('ETH Address: -')
+            self.nameDisplay.setText('')
           self.copyAddrButton.hide()
           self.copyEthButton.hide()
         return
@@ -1375,15 +1385,27 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
             f"Node info request for {container_name} timed out. This may indicate network issues or high load on the remote host.",
             color="red")
       else:
+        # Check if we're in a loading state (container starting up)
+        is_loading = hasattr(self, 'loading_indicator') and self.loading_indicator.isVisible()
+        
         self.add_log(f'Error getting node info for {container_name}: {error}', debug=True)
-        self.addressDisplay.setText('Address: Error getting node info')
-        self.ethAddressDisplay.setText('ETH Address: Not available')
-        self.nameDisplay.setText('')
+        
+        if is_loading:
+          # Container is starting up - show loading messages instead of error
+          self.addressDisplay.setText('Address: Starting up...')
+          self.ethAddressDisplay.setText('ETH Address: Starting up...')
+          self.nameDisplay.setText('Name: Loading...')
+        else:
+          # Container is not loading - show error state
+          self.addressDisplay.setText('Address: Error getting node info')
+          self.ethAddressDisplay.setText('ETH Address: -')
+          self.nameDisplay.setText('')
+        
         self.copyAddrButton.hide()
         self.copyEthButton.hide()
 
         # If this is a timeout error, log it more prominently
-        if "timed out" in error.lower():
+        if "timeout" in error.lower() or "timed out" in error.lower():
           self.add_log(
             f"Node info request for {container_name} timed out. This may indicate network issues or high load on the remote host.",
             color="red")
@@ -1416,11 +1438,21 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     
     # Check if container is running
     if not self.is_container_running():
-      uptime = "STOPPED"
-      node_epoch = "N/A"
-      node_epoch_avail = 0
-      ver = "N/A"
-      color = 'red'
+      # Check if we're in a loading state (container starting up)
+      is_loading = hasattr(self, 'loading_indicator') and self.loading_indicator.isVisible()
+      
+      if is_loading:
+        uptime = "STARTING..."
+        node_epoch = "Loading..."
+        node_epoch_avail = 0
+        ver = "Loading..."
+        color = 'blue'
+      else:
+        uptime = "STOPPED"
+        node_epoch = "N/A"
+        node_epoch_avail = 0
+        ver = "N/A"
+        color = 'red'
       
     # Only update if values have changed
     if uptime != self.__display_uptime:
@@ -1712,7 +1744,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     # Create dialog
     dialog = QDialog(self)
     dialog.setWindowTitle("Change Node Name")
-    dialog.setMinimumWidth(400)
+    dialog.setMinimumWidth(450)
     
     layout = QVBoxLayout()
     
@@ -1730,6 +1762,16 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     text_color = "white" if is_dark else "black"
     name_input.setStyleSheet(f"color: {text_color};")
     layout.addWidget(name_input)
+    
+    # Add restrictions section
+    restrictions_label = QLabel("Name restrictions:")
+    restrictions_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
+    layout.addWidget(restrictions_label)
+    
+    restrictions_text = QLabel("• Maximum 15 characters\n• Only letters (a-z, A-Z), numbers (0-9), hyphens (-), underscores (_)\n• Cannot be empty")
+    restrictions_text.setStyleSheet("margin-left: 10px; margin-bottom: 10px;")
+    restrictions_text.setWordWrap(True)
+    layout.addWidget(restrictions_text)
     
     # Add buttons
     button_layout = QHBoxLayout()
@@ -1773,39 +1815,11 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
             self.toast.show_notification(NotificationType.ERROR, "No container selected")
             return
     
-    # Check if name exceeds max length
-    if len(new_name) > MAX_ALIAS_LENGTH:
-        # Show warning dialog
-        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout
-        warning_dialog = QDialog(self)
-        warning_dialog.setWindowTitle("Warning")
-        warning_dialog.setMinimumWidth(400)
-        layout = QVBoxLayout()
-        
-        warning_text = f"Node name exceeds maximum length of {MAX_ALIAS_LENGTH} characters.\nIt will be truncated to: {new_name[:MAX_ALIAS_LENGTH]}"
-        layout.addWidget(QLabel(warning_text))
-        
-        button_layout = QHBoxLayout()
-        proceed_btn = QPushButton("Proceed")
-        proceed_btn.setProperty("type", "confirm")  # Set property for styling
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.setProperty("type", "cancel")  # Set property for styling
-        
-        button_layout.addWidget(proceed_btn)
-        button_layout.addWidget(cancel_btn)
-        layout.addLayout(button_layout)
-        
-        warning_dialog.setLayout(layout)
-        warning_dialog.setStyleSheet(self._current_stylesheet)  # Apply current theme
-        
-        # Connect buttons
-        proceed_btn.clicked.connect(warning_dialog.accept)
-        cancel_btn.clicked.connect(warning_dialog.reject)
-        
-        if warning_dialog.exec_() == QDialog.Accepted:
-            new_name = new_name[:MAX_ALIAS_LENGTH]
-        else:
-            return  # Return to editing if user cancels
+    # Validate the new name
+    validation_error = self._validate_node_alias(new_name)
+    if validation_error:
+        self.toast.show_notification(NotificationType.ERROR, validation_error)
+        return
     
     def on_success(data: dict) -> None:
         self.add_log('Successfully renamed node, restarting container...', debug=True)
@@ -1850,18 +1864,91 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
 
     def on_error(error: str) -> None:
         self.add_log(f'Error renaming node: {error}', debug=True)
+        # Extract meaningful error message from the response
+        error_message = self._extract_rename_error_message(error)
         self.toast.show_notification(
             NotificationType.ERROR,
-            'Failed to rename node'
+            f'Failed to rename node: {error_message}'
         )
 
     self.docker_handler.update_node_name(new_name, on_success, on_error)
 
+  def _validate_node_alias(self, alias: str) -> str:
+    """Validate a node alias according to the rules.
+    
+    Args:
+        alias: The alias to validate
+        
+    Returns:
+        str: Error message if validation fails, empty string if valid
+    """
+    import re
+    
+    # Check if empty
+    if not alias:
+        return "Node name cannot be empty"
+    
+    # Check length
+    if len(alias) > MAX_ALIAS_LENGTH:
+        return f"Node name cannot exceed {MAX_ALIAS_LENGTH} characters (current: {len(alias)})"
+    
+    # Check allowed characters: letters, numbers, hyphens, underscores
+    if not re.match(r'^[a-zA-Z0-9_-]+$', alias):
+        return "Node name can only contain letters (a-z, A-Z), numbers (0-9), hyphens (-), and underscores (_)"
+    
+    return ""  # Valid
+  
+  def _extract_rename_error_message(self, error: str) -> str:
+    """Extract a meaningful error message from the rename operation error.
+    
+    Args:
+        error: The raw error message from the rename operation
+        
+    Returns:
+        str: A user-friendly error message
+    """
+    error_lower = error.lower()
+    
+    # Check for common error patterns and provide specific messages
+    if "timeout" in error_lower or "timed out" in error_lower:
+        return "Operation timed out. Please check your connection and try again."
+    elif "connection" in error_lower and ("refused" in error_lower or "failed" in error_lower):
+        return "Unable to connect to the node. Please ensure the container is running."
+    elif "permission" in error_lower or "forbidden" in error_lower:
+        return "Permission denied. Please check your node permissions."
+    elif "invalid" in error_lower and "name" in error_lower:
+        return "The provided name is invalid or not accepted by the node."
+    elif "conflict" in error_lower or "already exists" in error_lower:
+        return "A node with this name already exists. Please choose a different name."
+    elif "network" in error_lower:
+        return "Network error occurred. Please check your connection and try again."
+    elif "not found" in error_lower or "404" in error:
+        return "Node endpoint not found. The container may not be fully started."
+    elif "bad request" in error_lower or "400" in error:
+        return "Invalid request. Please check the node name format."
+    elif "internal server error" in error_lower or "500" in error:
+        return "Internal server error occurred. Please try again later."
+    else:
+        # Return a cleaned up version of the original error
+        # Remove common technical prefixes and clean up the message
+        cleaned_error = error.strip()
+        if cleaned_error.startswith("Error:"):
+            cleaned_error = cleaned_error[6:].strip()
+        if cleaned_error.startswith("Failed to"):
+            cleaned_error = cleaned_error[9:].strip()
+        
+        # Capitalize first letter if it's not already
+        if cleaned_error and cleaned_error[0].islower():
+            cleaned_error = cleaned_error[0].upper() + cleaned_error[1:]
+        
+        return cleaned_error if cleaned_error else "Unknown error occurred"
+
   def _clear_info_display(self):
     """Clear all information displays."""
-    # Stop any running loading indicator first
-    if hasattr(self, 'loading_indicator'):
-        self.loading_indicator.stop()
+    # Check if we're in a loading state (container starting up)
+    is_loading = hasattr(self, 'loading_indicator') and self.loading_indicator.isVisible()
+    
+    # Don't stop the loading indicator here - let the calling methods manage it
     
     # Set text color based on theme
     text_color = "white" if self._current_stylesheet == DARK_STYLESHEET else "black"
@@ -1906,19 +1993,35 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
             if hasattr(self, 'copyEthButton'):
                 self.copyEthButton.setVisible(True)
     else:
-        # No cached data, clear displays
-        if hasattr(self, 'nameDisplay'):
-            self.nameDisplay.setText('Name: -')
+        # No cached data - show loading state if container is starting, otherwise show placeholder
+        if is_loading:
+            # Container is starting up - show loading messages instead of "Not available"
+            if hasattr(self, 'nameDisplay'):
+                self.nameDisplay.setText('Name: Loading...')
 
-        if hasattr(self, 'addressDisplay'):
-            self.addressDisplay.setText('Address: Not available')
-            if hasattr(self, 'copyAddrButton'):
-                self.copyAddrButton.hide()
-        
-        if hasattr(self, 'ethAddressDisplay'):
-            self.ethAddressDisplay.setText('ETH Address: Not available')
-            if hasattr(self, 'copyEthButton'):
-                self.copyEthButton.hide()
+            if hasattr(self, 'addressDisplay'):
+                self.addressDisplay.setText('Address: Starting up...')
+                if hasattr(self, 'copyAddrButton'):
+                    self.copyAddrButton.hide()
+            
+            if hasattr(self, 'ethAddressDisplay'):
+                self.ethAddressDisplay.setText('ETH Address: Starting up...')
+                if hasattr(self, 'copyEthButton'):
+                    self.copyEthButton.hide()
+        else:
+            # Container is not loading - show neutral placeholders
+            if hasattr(self, 'nameDisplay'):
+                self.nameDisplay.setText('Name: -')
+
+            if hasattr(self, 'addressDisplay'):
+                self.addressDisplay.setText('Address: -')
+                if hasattr(self, 'copyAddrButton'):
+                    self.copyAddrButton.hide()
+            
+            if hasattr(self, 'ethAddressDisplay'):
+                self.ethAddressDisplay.setText('ETH Address: -')
+                if hasattr(self, 'copyEthButton'):
+                    self.copyEthButton.hide()
         
         # Clear instance variables
         self.node_addr = None
