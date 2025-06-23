@@ -253,8 +253,6 @@ class DockerPullDialog(QDialog):
             # Update overall progress
             self._update_overall_progress()
             
-            # Process events to ensure UI updates
-            QApplication.processEvents()
         # Handle newer Docker output format with direct status updates
         elif "Downloading" in line or "Extracting" in line or "Download complete" in line or "Pull complete" in line:
             # For newer Docker output that doesn't always include layer IDs
@@ -345,8 +343,7 @@ class DockerPullDialog(QDialog):
             # Update overall progress
             self._update_overall_progress()
             
-            # Process events to ensure UI updates
-            QApplication.processEvents()
+
     
     def _update_overall_progress(self):
         """Update the overall progress based on layer progress."""
@@ -373,8 +370,7 @@ class DockerPullDialog(QDialog):
         """
         if hasattr(self, 'info_label'):
             self.info_label.setText(message)
-            # Process events to ensure UI updates immediately
-            QApplication.processEvents()
+
     
     def closeEvent(self, event):
         """Handle the dialog close event."""
@@ -408,8 +404,6 @@ class DockerPullDialog(QDialog):
         else:
             self.set_message(f"Docker image pull failed: {message}")
         
-        # Process events to ensure UI updates immediately
-        QApplication.processEvents()
         
         # Emit the signal to notify the parent
         self.pull_complete.emit(success, message)

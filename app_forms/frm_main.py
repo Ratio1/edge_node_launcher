@@ -2562,8 +2562,6 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
                 # Process each line of output in real-time to update the dialog
                 if hasattr(self, 'docker_pull_dialog') and self.docker_pull_dialog is not None :
                     self.docker_pull_dialog.update_pull_progress(line)
-                    # Process events to keep UI responsive
-                    QApplication.processEvents()
             
             # Start the Docker pull operation with real-time output processing
             self.docker_handler.pull_image(on_pull_success, on_pull_error, on_pull_output)
