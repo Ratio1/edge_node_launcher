@@ -221,6 +221,12 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     # Initialize system resources display
     self.update_resources_display()
 
+    # Perform initial force refresh to get the latest data
+    if self.container_combo.count() > 0:
+        self.add_log("Performing initial force refresh on startup...", color="blue")
+        # Use a timer to ensure UI is fully initialized before refreshing
+        QTimer.singleShot(500, self.force_refresh_all)
+
     # Perform initial update check on startup
     self.check_for_updates(verbose=True)
 
@@ -472,7 +478,16 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     self.explorer_button.clicked.connect(self.explorer_button_clicked)
     top_button_area.addWidget(self.explorer_button)
     
-    # Add some spacing between the explorer button and info box
+    # Add some spacing between the explorer button and refresh button
+    top_button_area.addSpacing(7)
+    
+    # Refresh button
+    self.refreshButton = QPushButton("Refresh Node Info")
+    self.refreshButton.clicked.connect(self.force_refresh_all)
+    self.refreshButton.setToolTip("Force refresh all node information including address, metrics, and status")
+    top_button_area.addWidget(self.refreshButton)
+    
+    # Add some spacing between the refresh button and info box
     top_button_area.addSpacing(7)
     
     # Info box
@@ -1635,6 +1650,142 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     if (time() - self.__last_docker_image_check) > DOCKER_IMAGE_AUTO_UPDATE_CHECK_INTERVAL:
       self.__last_docker_image_check = time()
       self._check_docker_image_updates()
+
+  def force_refresh_all(self):
+    """Force refresh all node information immediately.
+    
+    This method is called when the user clicks the refresh button to get the most
+    recent data from the node, including addresses, metrics, and status.
+    """
+    try:
+        # Get the currently selected container
+        current_index = self.container_combo.currentIndex()
+        if current_index < 0:
+            self.toast.show_notification(NotificationType.ERROR, "No container selected")
+            return
+            
+        container_name = self.container_combo.itemData(current_index)
+        if not container_name:
+            self.toast.show_notification(NotificationType.ERROR, "No container selected")
+            return
+            
+        self.add_log(f"Force refreshing all information for container: {container_name}", color="blue")
+        
+        # Show notification that refresh is starting
+        self.toast.show_notification(NotificationType.INFO, "Refreshing node information...")
+        
+        # Make sure the docker handler has the correct container name
+        self.docker_handler.set_container_name(container_name)
+        
+        # Check if container is running first
+        if not self.is_container_running():
+            self.add_log(f"Container {container_name} is not running, limited refresh available", color="yellow")
+            self.toast.show_notification(NotificationType.WARNING, "Container is not running. Only cached data available.")
+            
+            # Still update what we can
+            self.update_toggle_button_text()
+            self.maybe_refresh_uptime()  # This will show "STOPPED" status
+            self.update_resources_display()
+            return
+        
+        # Container is running - get fresh node info directly
+        self.add_log("Getting fresh node information from container...", debug=True)
+        
+        # Clear current data to force fresh retrieval
+        self.node_addr = None
+        self.node_eth_address = None
+        self.node_name = None
+        self.__display_uptime = None
+        
+        # Define success callback for get_node_info
+        def on_node_info_success(node_info: NodeInfo) -> None:
+            self.add_log(f"Received fresh node info: {node_info.address}, {node_info.alias}, ETH: {node_info.eth_address}", color="green")
+            
+            # Update all node information from the fresh response
+            self.node_addr = node_info.address
+            self.node_eth_address = node_info.eth_address
+            self.node_name = node_info.alias
+            
+            # Update displays with fresh data
+            if self.node_addr:
+                if len(self.node_addr) > 24:
+                    str_display = f"Address: {self.node_addr[:16]}...{self.node_addr[-8:]}"
+                else:
+                    str_display = f"Address: {self.node_addr}"
+                self.addressDisplay.setText(str_display)
+                self.copyAddrButton.setVisible(True)
+            
+            if self.node_eth_address:
+                if len(self.node_eth_address) > 24:
+                    str_eth_display = f"ETH Address: {self.node_eth_address[:16]}...{self.node_eth_address[-8:]}"
+                else:
+                    str_eth_display = f"ETH Address: {self.node_eth_address}"
+                self.ethAddressDisplay.setText(str_eth_display)
+                self.copyEthButton.setVisible(True)
+            
+            if self.node_name:
+                self.nameDisplay.setText('Name: ' + self.node_name)
+            
+            # Save fresh addresses to config
+            self.config_manager.update_node_address(container_name, self.node_addr)
+            self.config_manager.update_eth_address(container_name, self.node_eth_address)
+            
+            # Check if node alias has changed and update config
+            config_container = self.config_manager.get_container(container_name)
+            if config_container and node_info.alias != config_container.node_alias:
+                self.add_log(f"Node alias changed from '{config_container.node_alias}' to '{node_info.alias}', updating config", debug=True)
+                self.config_manager.update_node_alias(container_name, node_info.alias)
+                # Refresh container list to update display in dropdown
+                current_container = container_name
+                self.refresh_container_list()
+                # Restore the selection
+                for i in range(self.container_combo.count()):
+                    if self.container_combo.itemData(i) == current_container:
+                        self.container_combo.setCurrentIndex(i)
+                        break
+            
+            # Now refresh metrics and other data
+            self.add_log("Refreshing node metrics and performance data...", debug=True)
+            self.plot_data()
+            
+            # Force refresh uptime, epoch, and version info
+            self.add_log("Refreshing node status information...", debug=True)
+            self.maybe_refresh_uptime()
+            
+            # Update system resources
+            self.add_log("Refreshing system resources...", debug=True)
+            self.update_resources_display()
+            
+            # Update button states
+            self.update_toggle_button_text()
+            
+            # Show success notification
+            self.toast.show_notification(
+                NotificationType.SUCCESS, 
+                "Node information refreshed successfully"
+            )
+            
+            self.add_log(f"Completed force refresh for container: {container_name}", color="green")
+        
+        # Define error callback for get_node_info
+        def on_node_info_error(error):
+            self.add_log(f"Error getting fresh node info: {error}", color="red")
+            self.toast.show_notification(NotificationType.ERROR, f"Failed to refresh node info: {error}")
+            
+            # Still try to refresh other data
+            self.add_log("Attempting to refresh other data despite node info error...", debug=True)
+            self.plot_data()
+            self.maybe_refresh_uptime()
+            self.update_resources_display()
+            self.update_toggle_button_text()
+        
+        # Call get_node_info to get fresh data
+        self.docker_handler.get_node_info(on_node_info_success, on_node_info_error)
+        
+    except Exception as e:
+        error_msg = f"Error during force refresh: {str(e)}"
+        self.add_log(error_msg, color="red")
+        self.toast.show_notification(NotificationType.ERROR, f"Refresh failed: {str(e)}")
 
   def _check_docker_image_updates(self):
     """Check if there's an updated Docker image and pull it if available."""
