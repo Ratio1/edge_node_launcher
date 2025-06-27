@@ -7,7 +7,7 @@ import dataclasses
 import subprocess
 
 from datetime import datetime, timedelta
-from time import time
+from time import time, sleep
 from typing import Optional
 import re
 
@@ -87,6 +87,7 @@ from widgets.CenteredComboBox import CenteredComboBox
 from widgets.LoadingDialog import LoadingDialog
 
 from ver import __VER__ as CURRENT_VERSION
+
 
 
 def get_platform_and_os_info():
@@ -1635,6 +1636,12 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
 
   def refresh_all(self):
     """Refresh all data and UI elements."""
+    self.add_log('Refreshing')
+    if not self.is_container_running() and self.toggleButton.isEnabled() == True:
+      self.add_log("Container is supposed to run. Starting it now...", debug=True, color="red")
+      self._start_container()
+      sleep(5)
+
     self._refresh_local_containers()
 
     # Update system resources display
@@ -2919,7 +2926,6 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
                         if result.returncode == 0:
                             self.add_log("Successfully removed conflicting container, retrying launch", color="blue")
                             # Wait to ensure Docker has released the resources
-                            import time
                             time.sleep(1)
                             # Retry the launch
                             self.docker_handler.launch_container_threaded(volume_name, on_launch_success, on_launch_error)

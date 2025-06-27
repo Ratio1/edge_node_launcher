@@ -392,6 +392,7 @@ class _DockerUtilsMixin:
 
 
   def launch_container(self):
+    print('launch_container')
     # Check Docker status first
     if not self.check_docker():
         return
