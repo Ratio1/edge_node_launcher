@@ -230,7 +230,6 @@ class _DockerUtilsMixin:
     base_run += [
         '--rm',
         '--gpus', 'all',
-        '--env-file', '.env',
         '-v', f'{DOCKER_VOLUME}:/edge_node/_local_cache',
         '--name', self.docker_container_name, '-d',
     ]

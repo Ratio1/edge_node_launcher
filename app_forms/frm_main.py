@@ -135,8 +135,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     self._current_stylesheet = DARK_STYLESHEET  # Default to dark theme
     self.__last_plot_data = None
     self.__last_auto_update_check = 0
-    self.__last_docker_image_check = 0
-    
+
     # Track update process state to prevent duplicate notifications
     self.__update_in_progress = False
     self.__update_dialog_shown = False
@@ -1665,10 +1664,6 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
       self.__last_auto_update_check = time()
       self.check_for_updates(verbose=verbose or FULL_DEBUG)
 
-    # Check for Docker image updates every 5 minutes (300 seconds)
-    if (time() - self.__last_docker_image_check) > DOCKER_IMAGE_AUTO_UPDATE_CHECK_INTERVAL:
-      self.__last_docker_image_check = time()
-      self._check_docker_image_updates()
 
   def force_refresh_all(self):
     """Force refresh all node information immediately.
@@ -1806,32 +1801,6 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
         self.add_log(error_msg, color="red")
         self.toast.show_notification(NotificationType.ERROR, f"Refresh failed: {str(e)}")
 
-  def _check_docker_image_updates(self):
-    """Check if there's an updated Docker image and pull it if available."""
-    try:
-      # First ensure we have Docker
-      if not self.check_docker():
-        return
-        
-      # Get proper image name and tag
-      from utils.const import DOCKER_IMAGE, DOCKER_TAG
-      
-      self.add_log(f"Checking for Docker image updates...", debug=True)
-      
-      # Use the docker_handler service to check for and pull updates
-      was_updated, message = self.docker_handler.check_and_pull_image_updates(
-        image_name=DOCKER_IMAGE,
-        tag=DOCKER_TAG
-      )
-      
-      # Log the result
-      if was_updated:
-        self.add_log(message, color="green")
-      else:
-        self.add_log(message, debug=True)
-        
-    except Exception as e:
-      self.add_log(f"Error checking for Docker image updates: {str(e)}", debug=True)
 
   def _refresh_local_containers(self):
     """Refresh local container list and info."""
@@ -3017,6 +2986,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     if hasattr(self, 'docker_pull_dialog') and self.docker_pull_dialog is not None:
         self.docker_pull_dialog.safe_close()
         # Remove the reference immediately
+
         self.docker_pull_dialog = None
     
     # Process events to ensure UI updates
@@ -3364,7 +3334,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
         self.storageDisplay.setText(f"{STORAGE_LABEL} {storage_info}")
         
         self.add_log("Updated system resources display", debug=True)
-        
+
     except Exception as e:
         self.add_log(f"Error updating resources display: {str(e)}", debug=True)
         # Set fallback values on error
