@@ -1841,7 +1841,6 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
             self.loading_indicator.stop()
         
         # Clear any remote connection settings to ensure we're using local Docker
-        # Instead of calling clear_remote_connection(), directly set remote_ssh_command to None
         if hasattr(self, 'docker_handler'):
             self.docker_handler.remote_ssh_command = None
         
@@ -3324,37 +3323,6 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
         self.add_log(f"Error checking if container exists in Docker: {str(e)}", debug=True, color="red")
         return False
 
-  def cleanup_container_configs(self):
-    """Update container configurations with their current status.
-    
-    This method checks which containers exist in Docker and updates their status in the config.
-    It does NOT remove any configurations to maintain persistence.
-    """
-    try:
-        # Get all containers from config
-        config_containers = self.config_manager.get_all_containers()
-        
-        # Track if any container status has changed
-        status_changed = False
-        
-        # Check each container's existence in Docker
-        for config_container in config_containers:
-            exists_in_docker = self.container_exists_in_docker(config_container.name)
-            
-            # Check if this is a status change (we could store previous status in the future)
-            # For now, just log the status
-            self.add_log(f"Container {config_container.name} exists in Docker: {exists_in_docker}", debug=True)
-            
-            # We could add a status field to ContainerConfig if needed in the future
-            # If we did, we would set status_changed = True if the status changed
-        
-        # Only refresh container list if status changed
-        # Since we don't track status changes yet, we'll comment this out
-        # if status_changed:
-        #     self.refresh_container_list()
-    except Exception as e:
-        self.add_log(f"Error updating container configurations: {str(e)}", debug=True, color="red")
-
   def post_launch_setup(self):
     """Execute post-launch setup tasks.
     
@@ -3380,22 +3348,6 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     QApplication.processEvents()
     
     return
-  
-  def clear_remote_connection(self):
-    """Clear the remote SSH connection."""
-    if hasattr(self, 'ssh_service'):
-        self.ssh_service.clear_configuration()
-        
-    # Reset the docker handler's remote command
-    if hasattr(self, 'docker_handler'):
-        self.docker_handler.remote_ssh_command = None
-        
-    # Update UI
-    self.add_log("Cleared remote connection")
-    
-    # Don't call _refresh_local_containers here to avoid circular dependency
-    return
-
 
 
   def update_resources_display(self):
@@ -3539,14 +3491,4 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
         self.add_log(f"Error during download or installation: {str(e)}")
         QMessageBox.critical(self, 'Update Failed', f'Failed to download or install the update: {str(e)}')
 
-  def manual_check_for_updates(self):
-    """Manually trigger an update check (e.g., from a menu or button)."""
-    if self.__update_in_progress or self.__update_dialog_shown:
-        self.toast.show_notification(
-            NotificationType.INFO, 
-            "Update check is already in progress. Please wait..."
-        )
-        return
-    
-    self.add_log("Manual update check requested by user", debug=True)
-    self.check_for_updates(verbose=True)
+
