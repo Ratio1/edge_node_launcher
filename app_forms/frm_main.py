@@ -201,6 +201,9 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     # Track if user intentionally stopped the container to prevent auto-restart
     self.user_stopped_container = False
     
+    # Track failed get_node_info requests for auto-restart
+    self.node_info_failure_count = 0
+    
     # Check if container is running and update UI accordingly
     if self.is_container_running():
         self.add_log("Container is running on startup, updating UI", debug=True)
@@ -1355,14 +1358,13 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     plot_widget.setTitle(name)
 
   def refresh_node_info(self):
-    """Refresh the node address display by fetching fresh data first, then updating UI."""
-    # Get the current index and container name from the data
+    """Refresh the node information by fetching fresh data from the container and updating the UI."""
+    # Get the current container
     current_index = self.container_combo.currentIndex() 
     if current_index < 0:
       self._update_ui_no_container()
       return
 
-    # Get the actual container name from the item data
     container_name = self.container_combo.itemData(current_index)
     if not container_name:
       self._update_ui_no_container()
@@ -1376,33 +1378,165 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
       self._update_ui_container_not_running(container_name)
       return
 
-    # Container is running - fetch fresh data first
-    self.add_log(f"Fetching fresh node info for container: {container_name}", debug=True)
+    # Container is running - get fresh node info
+    self.add_log(f"Getting node information for {container_name}", debug=True)
     
     def on_success(node_info: NodeInfo) -> None:
-      # Make sure we're still on the same container
-      current_selected = self.container_combo.currentText()
-      if container_name != current_selected:
-        self.add_log(f"Container changed during address refresh from {container_name} to {current_selected}, ignoring results", debug=True)
-        return
-
-      # Update UI with fresh data
+      # Reset failure counter on successful request
+      if self.node_info_failure_count > 0:
+        self.add_log(f"Node info request succeeded after {self.node_info_failure_count} failures, resetting counter", debug=True)
+        self.node_info_failure_count = 0
+      
+      # Update UI with fresh node info data
       self._update_ui_with_fresh_data(node_info, container_name)
 
     def on_error(error):
-      # Make sure we're still on the same container
-      if container_name != self.container_combo.currentText():
-        self.add_log(f"Container changed during address refresh, ignoring error", debug=True)
+      # Increment failure counter
+      self.node_info_failure_count += 1
+      self.add_log(f"Node info request failed ({self.node_info_failure_count}/{NODE_INFO_FAILURE_THRESHOLD}): {error}", color="yellow")
+      
+      # Check if we need to restart the container after consecutive failures
+      if self.node_info_failure_count >= NODE_INFO_FAILURE_THRESHOLD:
+        self.add_log(f"Node info failed {NODE_INFO_FAILURE_THRESHOLD} times for {container_name}, restarting container", color="red")
+        self._restart_container_after_failures(container_name)
         return
-
+      
       # Handle error by falling back to cached data or showing error messages
       self._handle_node_info_error(error, container_name)
 
-    # Attempt to fetch fresh node info
+    # Get node info from the container
+    self.docker_handler.get_node_info(on_success, on_error)
+
+  def _restart_container_after_failures(self, container_name: str):
+    """Restart container after consecutive get_node_info failures.
+    
+    Args:
+        container_name: Name of the container to restart
+    """
     try:
-      self.docker_handler.get_node_info(on_success, on_error)
+      # Reset failure counter before restarting
+      self.node_info_failure_count = 0
+      
+      # Show notification to user
+      self.toast.show_notification(
+        NotificationType.WARNING, 
+        f"Container {container_name} is not responding. Updating image and restarting..."
+      )
+      
+      self.add_log(f"Automatically updating and restarting {container_name} due to consecutive failures", color="red")
+      
+      # Get volume name for restart
+      volume_name = None
+      container_config = self.config_manager.get_container(container_name)
+      if container_config and container_config.volume:
+        volume_name = container_config.volume
+        self.add_log(f"Using volume {volume_name} for restart", debug=True)
+      else:
+        from utils.docker_utils import get_volume_name
+        volume_name = get_volume_name(container_name)
+        self.add_log(f"Generated volume name {volume_name} for restart", debug=True)
+      
+      # Define restart success callback
+      def on_restart_success():
+        self.add_log(f"Container {container_name} updated and restarted successfully after failures", color="green")
+        self.toast.show_notification(
+          NotificationType.SUCCESS, 
+          f"Container {container_name} updated and restarted successfully"
+        )
+        # Update UI after restart
+        self.post_launch_setup()
+        self.refresh_node_info()
+        self.plot_data()
+      
+      # Define restart error callback
+      def on_restart_error(error_msg):
+        self.add_log(f"Failed to update and restart container {container_name}: {error_msg}", color="red")
+        self.toast.show_notification(
+          NotificationType.ERROR, 
+          f"Failed to update and restart container {container_name}: {error_msg}"
+        )
+      
+      # Stop, pull, and restart the container
+      self.add_log(f"Stopping container {container_name} for restart with image update", debug=True)
+      
+      def on_stop_success(result):
+        stdout, stderr, return_code = result
+        if return_code == 0:
+          self.add_log(f"Container {container_name} stopped, now pulling latest image", debug=True)
+          # Pull the latest image before restarting
+          self._restart_pull_and_launch(container_name, volume_name, on_restart_success, on_restart_error)
+        else:
+          on_restart_error(f"Failed to stop container: {stderr}")
+      
+      def on_stop_error(error_msg):
+        on_restart_error(f"Failed to stop container: {error_msg}")
+      
+      # Stop the container first
+      self.docker_handler.stop_container_threaded(container_name, on_stop_success, on_stop_error)
+      
     except Exception as e:
-      self.add_log(f"Failed to start node info request for {container_name}: {str(e)}", debug=True, color="red")
+      error_msg = f"Error during automatic restart: {str(e)}"
+      self.add_log(error_msg, color="red")
+      self.toast.show_notification(NotificationType.ERROR, error_msg)
+
+  def _restart_pull_and_launch(self, container_name: str, volume_name: str, on_success, on_error):
+    """Pull latest image and launch container during restart process.
+    
+    Args:
+        container_name: Name of the container to launch
+        volume_name: Volume name to use
+        on_success: Success callback
+        on_error: Error callback  
+    """
+    try:
+      def on_pull_success(result):
+        stdout, stderr, return_code = result
+        if return_code == 0:
+          self.add_log(f"Latest image pulled successfully, now launching {container_name}", debug=True)
+          # Launch the container after successful pull
+          self._restart_launch_container(container_name, volume_name, on_success, on_error)
+        else:
+          on_error(f"Failed to pull latest image: {stderr}")
+      
+      def on_pull_error(error_msg):
+        on_error(f"Failed to pull latest image: {error_msg}")
+      
+      def on_pull_output(line):
+        # Log pull progress for debugging
+        self.add_log(f"Pull: {line.strip()}", debug=True)
+      
+      # Pull the latest image
+      self.add_log(f"Pulling latest Docker image for restart of {container_name}", color="blue")
+      self.docker_handler.pull_image(on_pull_success, on_pull_error, on_pull_output)
+      
+    except Exception as e:
+      on_error(str(e))
+
+  def _restart_launch_container(self, container_name: str, volume_name: str, on_success, on_error):
+    """Launch container during restart process.
+    
+    Args:
+        container_name: Name of the container to launch
+        volume_name: Volume name to use
+        on_success: Success callback
+        on_error: Error callback  
+    """
+    try:
+      def on_launch_success(result):
+        stdout, stderr, return_code = result
+        if return_code == 0:
+          self.add_log(f"Container {container_name} launched successfully during restart", debug=True)
+          on_success()
+        else:
+          on_error(f"Failed to launch container: {stderr}")
+      
+      def on_launch_error(error_msg):
+        on_error(f"Failed to launch container: {error_msg}")
+      
+      # Launch the container
+      self.docker_handler.launch_container_threaded(volume_name, on_launch_success, on_launch_error)
+      
+    except Exception as e:
       on_error(str(e))
 
   def _update_ui_no_container(self):
