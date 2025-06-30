@@ -135,8 +135,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     self._current_stylesheet = DARK_STYLESHEET  # Default to dark theme
     self.__last_plot_data = None
     self.__last_auto_update_check = 0
-    self.__last_docker_image_check = 0
-    
+
     # Track update process state to prevent duplicate notifications
     self.__update_in_progress = False
     self.__update_dialog_shown = False
@@ -199,11 +198,19 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     # Set initial container status
     self.container_last_run_status = False
     
+    # Track if user intentionally stopped the container to prevent auto-restart
+    self.user_stopped_container = False
+    
+    # Track failed get_node_info requests for auto-restart
+    self.node_info_failure_count = 0
+    
     # Check if container is running and update UI accordingly
     if self.is_container_running():
         self.add_log("Container is running on startup, updating UI", debug=True)
+        # Clear the stop flag since container is already running
+        self.user_stopped_container = False
         self.post_launch_setup()
-        self.refresh_local_address()
+        self.refresh_node_info()
         self.plot_data()  # Initial plot
     else:
         self.add_log("No running container found on startup", debug=True)
@@ -1051,13 +1058,16 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
                 self.toast.show_notification(NotificationType.ERROR, error_msg)
                 return
             
+            # Mark that user intentionally stopped the container to prevent auto-restart
+            self.user_stopped_container = True
+            
             # Update loading dialog with progress    
             if hasattr(self, 'toggle_dialog') and self.toggle_dialog is not None and self.toggle_dialog.isVisible():
                 self.toggle_dialog.update_progress("Container stopped, updating UI...")
                 
             # Clear and update all UI elements
             self.update_toggle_button_text()
-            self.refresh_local_address()  # Updates address displays with cached data
+            self.refresh_node_info()  # Updates address displays with cached data
             self.maybe_refresh_uptime()   # Updates uptime displays
             self.plot_data()              # Clears plots
             
@@ -1143,6 +1153,9 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
         else:
             volume_name = get_volume_name(container_name)
             self.add_log(f"Generated volume name: {volume_name}", debug=True)
+        
+        # Mark that user intentionally started the container (clear stop flag)
+        self.user_stopped_container = False
         
         # Get node alias from config if available for better user feedback
         node_display_name = container_name
@@ -1344,194 +1357,333 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     """Update a plot with the given data."""
     plot_widget.setTitle(name)
 
-  def refresh_local_address(self):
-    """Refresh the node address display."""
-    # Get the current index and container name from the data
-    current_index = self.container_combo.currentIndex()
+  def refresh_node_info(self):
+    """Refresh the node information by fetching fresh data from the container and updating the UI."""
+    # Get the current container
+    current_index = self.container_combo.currentIndex() 
     if current_index < 0:
-      # Only update if there's no address already displayed
-      if not hasattr(self, 'node_addr') or not self.node_addr:
-        self.addressDisplay.setText('Address: No container selected')
-        self.ethAddressDisplay.setText('ETH Address: Not available')
-        self.nameDisplay.setText('')
-        self.copyAddrButton.hide()
-        self.copyEthButton.hide()
+      self._update_ui_no_container()
       return
 
-    # Get the actual container name from the item data
     container_name = self.container_combo.itemData(current_index)
     if not container_name:
-      # Only update if there's no address already displayed
-      if not hasattr(self, 'node_addr') or not self.node_addr:
-        self.addressDisplay.setText('Address: No container selected')
-        self.ethAddressDisplay.setText('ETH Address: Not available')
-        self.nameDisplay.setText('')
-        self.copyAddrButton.hide()
-        self.copyEthButton.hide()
+      self._update_ui_no_container()
       return
 
     # Make sure we're working with the correct container
     self.docker_handler.set_container_name(container_name)
 
-    # Check if container is running
-    is_running = self.is_container_running()
+    # Check if container is running - if not, show cached data or appropriate messages
+    if not self.is_container_running():
+      self._update_ui_container_not_running(container_name)
+      return
+
+    # Container is running - get fresh node info
+    self.add_log(f"Getting node information for {container_name}", debug=True)
     
-    # If not running, check if we have cached address data in config
-    if not is_running:
-      # Check if we're in a loading state (container starting up)
-      is_loading = hasattr(self, 'loading_indicator') and self.loading_indicator.isVisible()
-      
-      config_container = self.config_manager.get_container(container_name)
-      if config_container and config_container.node_address:
-        # If we have cached data, keep displaying it but indicate node is not running
-        if not hasattr(self, 'node_addr') or not self.node_addr:
-          self.node_addr = config_container.node_address
-          self.node_eth_address = config_container.eth_address
-          self.node_name = config_container.node_alias
-          
-          # Format addresses with clear labels and truncated values
-          if self.node_addr:
-            if len(self.node_addr) > 24:  # Only truncate if long enough
-              str_display = f"Address: {self.node_addr[:16]}...{self.node_addr[-8:]}"
-            else:
-              str_display = f"Address: {self.node_addr}"
-            self.addressDisplay.setText(str_display)
-            self.copyAddrButton.setVisible(True)
-          
-          if self.node_eth_address:
-            if len(self.node_eth_address) > 24:  # Only truncate if long enough
-              str_eth_display = f"ETH Address: {self.node_eth_address[:16]}...{self.node_eth_address[-8:]}"
-            else:
-              str_eth_display = f"ETH Address: {self.node_eth_address}"
-            self.ethAddressDisplay.setText(str_eth_display)
-            self.copyEthButton.setVisible(True)
-          
-          if self.node_name:
-            self.nameDisplay.setText('Name: ' + self.node_name)
-        
-        return
-      else:
-        # No cached data and not running
-        if not hasattr(self, 'node_addr') or not self.node_addr:
-          if is_loading:
-            # Container is starting up - show loading messages
-            self.addressDisplay.setText('Address: Starting up...')
-            self.ethAddressDisplay.setText('ETH Address: Starting up...')
-            self.nameDisplay.setText('Name: Loading...')
-          else:
-            # Container is stopped - show neutral status
-            self.addressDisplay.setText('Address: Node not running')
-            self.ethAddressDisplay.setText('ETH Address: -')
-            self.nameDisplay.setText('')
-          self.copyAddrButton.hide()
-          self.copyEthButton.hide()
-        return
-
     def on_success(node_info: NodeInfo) -> None:
-      # Make sure we're still on the same container
-      current_selected = self.container_combo.currentText()
-      if container_name != current_selected:
-        self.add_log(f"Container changed during address refresh from {container_name} to {current_selected}, ignoring results", debug=True)
-        return
-
-      # Get current config to check for changes
-      config_container = self.config_manager.get_container(container_name)
+      # Reset failure counter on successful request
+      if self.node_info_failure_count > 0:
+        self.add_log(f"Node info request succeeded after {self.node_info_failure_count} failures, resetting counter", debug=True)
+        self.node_info_failure_count = 0
       
-      # Check if node alias has changed
-      if config_container and node_info.alias != config_container.node_alias:
-          self.add_log(f"Node alias changed from '{config_container.node_alias}' to '{node_info.alias}', updating config", debug=True)
-          self.config_manager.update_node_alias(container_name, node_info.alias)
-          # Refresh container list to update display in dropdown
-          current_container = container_name  # Store current selection
-          self.refresh_container_list()
-          # Restore the selection
-          for i in range(self.container_combo.count()):
-              if self.container_combo.itemData(i) == current_container:
-                  self.container_combo.setCurrentIndex(i)
-                  break
-
-      self.node_name = node_info.alias
-      self.nameDisplay.setText('Name: ' + node_info.alias)
-
-      if node_info.address != self.node_addr:
-        self.node_addr = node_info.address
-        self.node_eth_address = node_info.eth_address
-
-        # Format addresses with clear labels and truncated values
-        if self.node_addr:
-          if len(self.node_addr) > 24:  # Only truncate if long enough
-            str_display = f"Address: {self.node_addr[:16]}...{self.node_addr[-8:]}"
-          else:
-            str_display = f"Address: {self.node_addr}"
-          self.addressDisplay.setText(str_display)
-          self.copyAddrButton.setVisible(bool(self.node_addr))
-
-        if self.node_eth_address:
-          if len(self.node_eth_address) > 24:  # Only truncate if long enough
-            str_eth_display = f"ETH Address: {self.node_eth_address[:16]}...{self.node_eth_address[-8:]}"
-          else:
-            str_eth_display = f"ETH Address: {self.node_eth_address}"
-          self.ethAddressDisplay.setText(str_eth_display)
-          self.copyEthButton.setVisible(bool(self.node_eth_address))
-
-        self.add_log(
-          f'Node info updated for {container_name}: {self.node_addr} : {self.node_name}, ETH: {self.node_eth_address}')
-
-        # Save addresses to config for this specific container
-        if container_name:
-          # Update node address in config
-          self.config_manager.update_node_address(container_name, self.node_addr)
-          # Update ETH address in config
-          self.config_manager.update_eth_address(container_name, self.node_eth_address)
-          self.add_log(f"Saved node address and ETH address to config for {container_name}", debug=True)
+      # Update UI with fresh node info data
+      self._update_ui_with_fresh_data(node_info, container_name)
 
     def on_error(error):
-      # Make sure we're still on the same container
-      if container_name != self.container_combo.currentText():
-        self.add_log(f"Container changed during address refresh, ignoring error", debug=True)
+      # Increment failure counter
+      self.node_info_failure_count += 1
+      self.add_log(f"Node info request failed ({self.node_info_failure_count}/{NODE_INFO_FAILURE_THRESHOLD}): {error}", color="yellow")
+      
+      # Check if we need to restart the container after consecutive failures
+      if self.node_info_failure_count >= NODE_INFO_FAILURE_THRESHOLD:
+        self.add_log(f"Node info failed {NODE_INFO_FAILURE_THRESHOLD} times for {container_name}, restarting container", color="red")
+        self._restart_container_after_failures(container_name)
         return
+      
+      # Handle error by falling back to cached data or showing error messages
+      self._handle_node_info_error(error, container_name)
 
-      # Don't clear the display if we already have data - just log the error
-      if hasattr(self, 'node_addr') and self.node_addr:
-        self.add_log(f'Error getting node info for {container_name}: {error}', debug=True)
-        
-        # If this is a timeout error, log it more prominently
-        if "timed out" in error.lower():
-          self.add_log(
-            f"Node info request for {container_name} timed out. This may indicate network issues or high load on the remote host.",
-            color="red")
-      else:
-        # Check if we're in a loading state (container starting up)
-        is_loading = hasattr(self, 'loading_indicator') and self.loading_indicator.isVisible()
-        
-        self.add_log(f'Error getting node info for {container_name}: {error}', debug=True)
-        
-        if is_loading:
-          # Container is starting up - show loading messages instead of error
-          self.addressDisplay.setText('Address: Starting up...')
-          self.ethAddressDisplay.setText('ETH Address: Starting up...')
-          self.nameDisplay.setText('Name: Loading...')
-        else:
-          # Container is not loading - show error state
-          self.addressDisplay.setText('Address: Error getting node info')
-          self.ethAddressDisplay.setText('ETH Address: -')
-          self.nameDisplay.setText('')
-        
-        self.copyAddrButton.hide()
-        self.copyEthButton.hide()
+    # Get node info from the container
+    self.docker_handler.get_node_info(on_success, on_error)
 
-        # If this is a timeout error, log it more prominently
-        if "timeout" in error.lower() or "timed out" in error.lower():
-          self.add_log(
-            f"Node info request for {container_name} timed out. This may indicate network issues or high load on the remote host.",
-            color="red")
-
+  def _restart_container_after_failures(self, container_name: str):
+    """Restart container after consecutive get_node_info failures.
+    
+    Args:
+        container_name: Name of the container to restart
+    """
     try:
-      self.add_log(f"Refreshing address for container: {container_name}", debug=True)
-      self.docker_handler.get_node_info(on_success, on_error)
+      # Reset failure counter before restarting
+      self.node_info_failure_count = 0
+      
+      # Show notification to user
+      self.toast.show_notification(
+        NotificationType.WARNING, 
+        f"Container {container_name} is not responding. Updating image and restarting..."
+      )
+      
+      self.add_log(f"Automatically updating and restarting {container_name} due to consecutive failures", color="red")
+      
+      # Get volume name for restart
+      volume_name = None
+      container_config = self.config_manager.get_container(container_name)
+      if container_config and container_config.volume:
+        volume_name = container_config.volume
+        self.add_log(f"Using volume {volume_name} for restart", debug=True)
+      else:
+        from utils.docker_utils import get_volume_name
+        volume_name = get_volume_name(container_name)
+        self.add_log(f"Generated volume name {volume_name} for restart", debug=True)
+      
+      # Define restart success callback
+      def on_restart_success():
+        self.add_log(f"Container {container_name} updated and restarted successfully after failures", color="green")
+        self.toast.show_notification(
+          NotificationType.SUCCESS, 
+          f"Container {container_name} updated and restarted successfully"
+        )
+        # Update UI after restart
+        self.post_launch_setup()
+        self.refresh_node_info()
+        self.plot_data()
+      
+      # Define restart error callback
+      def on_restart_error(error_msg):
+        self.add_log(f"Failed to update and restart container {container_name}: {error_msg}", color="red")
+        self.toast.show_notification(
+          NotificationType.ERROR, 
+          f"Failed to update and restart container {container_name}: {error_msg}"
+        )
+      
+      # Stop, pull, and restart the container
+      self.add_log(f"Stopping container {container_name} for restart with image update", debug=True)
+      
+      def on_stop_success(result):
+        stdout, stderr, return_code = result
+        if return_code == 0:
+          self.add_log(f"Container {container_name} stopped, now pulling latest image", debug=True)
+          # Pull the latest image before restarting
+          self._restart_pull_and_launch(container_name, volume_name, on_restart_success, on_restart_error)
+        else:
+          on_restart_error(f"Failed to stop container: {stderr}")
+      
+      def on_stop_error(error_msg):
+        on_restart_error(f"Failed to stop container: {error_msg}")
+      
+      # Stop the container first
+      self.docker_handler.stop_container_threaded(container_name, on_stop_success, on_stop_error)
+      
     except Exception as e:
-      self.add_log(f"Failed to start node info request for {container_name}: {str(e)}", debug=True, color="red")
+      error_msg = f"Error during automatic restart: {str(e)}"
+      self.add_log(error_msg, color="red")
+      self.toast.show_notification(NotificationType.ERROR, error_msg)
+
+  def _restart_pull_and_launch(self, container_name: str, volume_name: str, on_success, on_error):
+    """Pull latest image and launch container during restart process.
+    
+    Args:
+        container_name: Name of the container to launch
+        volume_name: Volume name to use
+        on_success: Success callback
+        on_error: Error callback  
+    """
+    try:
+      def on_pull_success(result):
+        stdout, stderr, return_code = result
+        if return_code == 0:
+          self.add_log(f"Latest image pulled successfully, now launching {container_name}", debug=True)
+          # Launch the container after successful pull
+          self._restart_launch_container(container_name, volume_name, on_success, on_error)
+        else:
+          on_error(f"Failed to pull latest image: {stderr}")
+      
+      def on_pull_error(error_msg):
+        on_error(f"Failed to pull latest image: {error_msg}")
+      
+      def on_pull_output(line):
+        # Log pull progress for debugging
+        self.add_log(f"Pull: {line.strip()}", debug=True)
+      
+      # Pull the latest image
+      self.add_log(f"Pulling latest Docker image for restart of {container_name}", color="blue")
+      self.docker_handler.pull_image(on_pull_success, on_pull_error, on_pull_output)
+      
+    except Exception as e:
       on_error(str(e))
+
+  def _restart_launch_container(self, container_name: str, volume_name: str, on_success, on_error):
+    """Launch container during restart process.
+    
+    Args:
+        container_name: Name of the container to launch
+        volume_name: Volume name to use
+        on_success: Success callback
+        on_error: Error callback  
+    """
+    try:
+      def on_launch_success(result):
+        stdout, stderr, return_code = result
+        if return_code == 0:
+          self.add_log(f"Container {container_name} launched successfully during restart", debug=True)
+          on_success()
+        else:
+          on_error(f"Failed to launch container: {stderr}")
+      
+      def on_launch_error(error_msg):
+        on_error(f"Failed to launch container: {error_msg}")
+      
+      # Launch the container
+      self.docker_handler.launch_container_threaded(volume_name, on_launch_success, on_launch_error)
+      
+    except Exception as e:
+      on_error(str(e))
+
+  def _update_ui_no_container(self):
+    """Update UI when no container is selected."""
+    if not hasattr(self, 'node_addr') or not self.node_addr:
+      self.addressDisplay.setText('Address: No container selected')
+      self.ethAddressDisplay.setText('ETH Address: Not available')
+      self.nameDisplay.setText('')
+      self.copyAddrButton.hide()
+      self.copyEthButton.hide()
+
+  def _update_ui_container_not_running(self, container_name: str):
+    """Update UI when container is not running - show cached data or appropriate messages."""
+    # Check if we're in a loading state (container starting up)
+    is_loading = hasattr(self, 'loading_indicator') and self.loading_indicator.isVisible()
+    
+    # Try to get cached data from config
+    config_container = self.config_manager.get_container(container_name)
+    
+    if config_container and config_container.node_address:
+      # Use cached data if available
+      self.node_addr = config_container.node_address
+      self.node_eth_address = config_container.eth_address
+      self.node_name = config_container.node_alias
+      
+      # Update UI with cached data
+      self._update_address_display(self.node_addr, show_copy_button=True)
+      self._update_eth_address_display(self.node_eth_address, show_copy_button=True)
+      if self.node_name:
+        self.nameDisplay.setText('Name: ' + self.node_name)
+      
+      self.add_log(f"Showing cached data for stopped container: {container_name}", debug=True)
+    else:
+      # No cached data available
+      if is_loading:
+        # Container is starting up - show loading messages
+        self.addressDisplay.setText('Address: Starting up...')
+        self.ethAddressDisplay.setText('ETH Address: Starting up...')
+        self.nameDisplay.setText('Name: Loading...')
+      else:
+        # Container is stopped - show neutral status
+        self.addressDisplay.setText('Address: Node not running')
+        self.ethAddressDisplay.setText('ETH Address: -')
+        self.nameDisplay.setText('')
+      
+      self.copyAddrButton.hide()
+      self.copyEthButton.hide()
+
+  def _update_ui_with_fresh_data(self, node_info: NodeInfo, container_name: str):
+    """Update UI with fresh node info data."""
+    # Get current config to check for changes
+    config_container = self.config_manager.get_container(container_name)
+    
+    # Check if node alias has changed and update config
+    if config_container and node_info.alias != config_container.node_alias:
+        self.add_log(f"Node alias changed from '{config_container.node_alias}' to '{node_info.alias}', updating config", debug=True)
+        self.config_manager.update_node_alias(container_name, node_info.alias)
+        # Refresh container list to update display in dropdown
+        current_container = container_name  # Store current selection
+        self.refresh_container_list()
+        # Restore the selection
+        for i in range(self.container_combo.count()):
+            if self.container_combo.itemData(i) == current_container:
+                self.container_combo.setCurrentIndex(i)
+                break
+
+    # Update instance variables with fresh data
+    self.node_addr = node_info.address
+    self.node_eth_address = node_info.eth_address
+    self.node_name = node_info.alias
+
+    # Update UI displays
+    self._update_address_display(self.node_addr, show_copy_button=True)
+    self._update_eth_address_display(self.node_eth_address, show_copy_button=True)
+    self.nameDisplay.setText('Name: ' + node_info.alias)
+
+    # Save fresh data to config
+    if container_name:
+      self.config_manager.update_node_address(container_name, self.node_addr)
+      self.config_manager.update_eth_address(container_name, self.node_eth_address)
+      self.add_log(f"Saved fresh node address and ETH address to config for {container_name}", debug=True)
+
+    self.add_log(f'Node info updated with fresh data for {container_name}: {self.node_addr} : {self.node_name}, ETH: {self.node_eth_address}')
+
+  def _handle_node_info_error(self, error: str, container_name: str):
+    """Handle errors when fetching node info by falling back to cached data or showing error messages."""
+    # Try to fall back to cached data first
+    config_container = self.config_manager.get_container(container_name)
+    
+    if config_container and config_container.node_address and hasattr(self, 'node_addr') and self.node_addr:
+      # We have both cached data and current data - just log the error but keep current display
+      self.add_log(f'Error getting fresh node info for {container_name}: {error}', debug=True)
+      
+      if "timed out" in error.lower():
+        self.add_log(
+          f"Node info request for {container_name} timed out. This may indicate network issues. Using cached data.",
+          color="yellow")
+    else:
+      # No cached data or current data - show appropriate error messages
+      is_loading = hasattr(self, 'loading_indicator') and self.loading_indicator.isVisible()
+      
+      self.add_log(f'Error getting node info for {container_name}: {error}', debug=True)
+      
+      if is_loading:
+        # Container is starting up - show loading messages instead of error
+        self.addressDisplay.setText('Address: Starting up...')
+        self.ethAddressDisplay.setText('ETH Address: Starting up...')  
+        self.nameDisplay.setText('Name: Loading...')
+      else:
+        # Container is not loading - show error state
+        self.addressDisplay.setText('Address: Error getting node info')
+        self.ethAddressDisplay.setText('ETH Address: -')
+        self.nameDisplay.setText('')
+      
+      self.copyAddrButton.hide()
+      self.copyEthButton.hide()
+
+      if "timeout" in error.lower() or "timed out" in error.lower():
+        self.add_log(
+          f"Node info request for {container_name} timed out. This may indicate network issues or high load.",
+          color="red")
+
+  def _update_address_display(self, address: str, show_copy_button: bool = False):
+    """Helper method to update address display with consistent formatting."""
+    if address:
+      if len(address) > 24:  # Only truncate if long enough
+        str_display = f"Address: {address[:16]}...{address[-8:]}"
+      else:
+        str_display = f"Address: {address}"
+      self.addressDisplay.setText(str_display)
+      self.copyAddrButton.setVisible(show_copy_button)
+    else:
+      self.addressDisplay.setText('Address: -')
+      self.copyAddrButton.hide()
+
+  def _update_eth_address_display(self, eth_address: str, show_copy_button: bool = False):
+    """Helper method to update ETH address display with consistent formatting."""
+    if eth_address:
+      if len(eth_address) > 24:  # Only truncate if long enough
+        str_display = f"ETH Address: {eth_address[:16]}...{eth_address[-8:]}"
+      else:
+        str_display = f"ETH Address: {eth_address}"
+      self.ethAddressDisplay.setText(str_display)
+      self.copyEthButton.setVisible(show_copy_button)
+    else:
+      self.ethAddressDisplay.setText('ETH Address: -')
+      self.copyEthButton.hide()
 
   def maybe_refresh_uptime(self):
     """Update uptime, epoch and epoch availability displays.
@@ -1636,8 +1788,9 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
 
   def refresh_all(self):
     """Refresh all data and UI elements."""
-    self.add_log('Refreshing')
-    if not self.is_container_running() and self.toggleButton.isEnabled() == True:
+    self.add_log('Refreshing', debug=True)
+    # Only auto-restart if container is not running, button is enabled, AND user didn't intentionally stop it
+    if not self.is_container_running() and self.toggleButton.isEnabled() == True and not self.user_stopped_container:
       self.add_log("Container is supposed to run. Starting it now...", debug=True, color="red")
       self._start_container()
       sleep(5)
@@ -1653,10 +1806,6 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
       self.__last_auto_update_check = time()
       self.check_for_updates(verbose=verbose or FULL_DEBUG)
 
-    # Check for Docker image updates every 5 minutes (300 seconds)
-    if (time() - self.__last_docker_image_check) > DOCKER_IMAGE_AUTO_UPDATE_CHECK_INTERVAL:
-      self.__last_docker_image_check = time()
-      self._check_docker_image_updates()
 
   def force_refresh_all(self):
     """Force refresh all node information immediately.
@@ -1794,32 +1943,6 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
         self.add_log(error_msg, color="red")
         self.toast.show_notification(NotificationType.ERROR, f"Refresh failed: {str(e)}")
 
-  def _check_docker_image_updates(self):
-    """Check if there's an updated Docker image and pull it if available."""
-    try:
-      # First ensure we have Docker
-      if not self.check_docker():
-        return
-        
-      # Get proper image name and tag
-      from utils.const import DOCKER_IMAGE, DOCKER_TAG
-      
-      self.add_log(f"Checking for Docker image updates...", debug=True)
-      
-      # Use the docker_handler service to check for and pull updates
-      was_updated, message = self.docker_handler.check_and_pull_image_updates(
-        image_name=DOCKER_IMAGE,
-        tag=DOCKER_TAG
-      )
-      
-      # Log the result
-      if was_updated:
-        self.add_log(message, color="green")
-      else:
-        self.add_log(message, debug=True)
-        
-    except Exception as e:
-      self.add_log(f"Error checking for Docker image updates: {str(e)}", debug=True)
 
   def _refresh_local_containers(self):
     """Refresh local container list and info."""
@@ -1829,7 +1952,6 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
             self.loading_indicator.stop()
         
         # Clear any remote connection settings to ensure we're using local Docker
-        # Instead of calling clear_remote_connection(), directly set remote_ssh_command to None
         if hasattr(self, 'docker_handler'):
             self.docker_handler.remote_ssh_command = None
         
@@ -1844,7 +1966,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
         if self.is_container_running():
             try:
                 # Refresh address first (usually faster)
-                self.refresh_local_address()
+                self.refresh_node_info()
                 
                 # Then plot data (can be slower)
                 try:
@@ -2109,7 +2231,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
             self.stop_container()
             self.launch_container()
             self.post_launch_setup()
-            self.refresh_local_address()
+            self.refresh_node_info()
         
         # Get node info to update config with actual container name
         self.docker_handler.get_node_info(update_config_with_container_name, on_node_info_error)
@@ -2118,7 +2240,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
         self.stop_container()
         self.launch_container()
         self.post_launch_setup()
-        self.refresh_local_address()
+        self.refresh_node_info()
 
     def on_error(error: str) -> None:
         self.add_log(f'Error renaming node: {error}', debug=True)
@@ -2430,7 +2552,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
         # If container is running, update all information displays
         if self.is_container_running():
             self.post_launch_setup()
-            self.refresh_local_address()  # Updates address displays with cached data
+            self.refresh_node_info()  # Updates address displays with cached data
             self.plot_data()  # Updates graphs and metrics
             self.maybe_refresh_uptime()  # Updates uptime, epoch, and version info
             self.add_log(f"Updated UI with running container data for: {container_name}", debug=True)
@@ -2595,6 +2717,9 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     try:
       from datetime import datetime
 
+      # Mark that user is intentionally starting a new container (clear stop flag)
+      self.user_stopped_container = False
+    
       # 1) Create & store this container's config
       container_config = ContainerConfig(
         name=container_name,
@@ -2664,6 +2789,9 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
             # Generate volume name based on container name
             volume_name = get_volume_name(container_name)
             self.add_log(f"Generated volume name: {volume_name}", debug=True)
+    
+    # Mark that user is intentionally launching the container (clear stop flag)
+    self.user_stopped_container = False
     
     # Ensure volume_name is not None or empty
     if not volume_name:
@@ -2769,60 +2897,59 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
                 self.launcher_dialog.update_progress(f"Removing existing container '{container_name}' before launch...")
             self.add_log(f"Container {container_name} already exists, removing it first", color="yellow")
         
-        # Check if Docker image exists
-        image_exists = self.docker_handler._ensure_image_exists()
-        if not image_exists:
-            # Stop the loading indicator since we're switching to pull dialog
-            self.loading_indicator.stop()
+        # Always pull the latest Docker image before launching
+        # Stop the loading indicator since we're switching to pull dialog
+        self.loading_indicator.stop()
+        
+        # Close the existing launcher dialog if it's open
+        if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None :
+            self.launcher_dialog.safe_close()
+            QTimer.singleShot(500, lambda: setattr(self, 'launcher_dialog', None) if hasattr(self, 'launcher_dialog') else None)
+        
+        # Show Docker pull dialog
+        from widgets.DockerPullDialog import DockerPullDialog
+        self.docker_pull_dialog = DockerPullDialog(self)
+        
+        # Connect the pull_complete signal to handle completion
+        self.docker_pull_dialog.pull_complete.connect(self._on_docker_pull_complete)
+        
+        # Store volume_name for later use after pull completes
+        self._pending_volume_name = volume_name
+        
+        # Show the dialog
+        self.docker_pull_dialog.show()
+        
+        # Define callbacks for Docker pull
+        def on_pull_success(result):
+            stdout, stderr, return_code = result
+            # No need to process lines here as they're processed in real-time by on_pull_output
             
-            # Close the existing launcher dialog if it's open
-            if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None :
-                self.launcher_dialog.safe_close()
-                QTimer.singleShot(500, lambda: setattr(self, 'launcher_dialog', None) if hasattr(self, 'launcher_dialog') else None)
-            
-            # Show Docker pull dialog
-            from widgets.DockerPullDialog import DockerPullDialog
-            self.docker_pull_dialog = DockerPullDialog(self)
-            
-            # Connect the pull_complete signal to handle completion
-            self.docker_pull_dialog.pull_complete.connect(self._on_docker_pull_complete)
-            
-            # Store volume_name for later use after pull completes
-            self._pending_volume_name = volume_name
-            
-            # Show the dialog
-            self.docker_pull_dialog.show()
-            
-            # Define callbacks for Docker pull
-            def on_pull_success(result):
-                stdout, stderr, return_code = result
-                # No need to process lines here as they're processed in real-time by on_pull_output
-                
-                # If pull completed successfully
-                if return_code == 0:
-                    if hasattr(self, 'docker_pull_dialog') and self.docker_pull_dialog is not None :
-                        self.docker_pull_dialog.set_pull_complete(True, "Docker image pulled successfully")
-                else:
-                    error_msg = f"Failed to pull Docker image: {stderr}"
-                    self.add_log(error_msg, color="red")
-                    if hasattr(self, 'docker_pull_dialog') and self.docker_pull_dialog is not None :
-                        self.docker_pull_dialog.set_pull_complete(False, error_msg)
-            
-            def on_pull_error(error_msg):
-                self.add_log(f"Error pulling Docker image: {error_msg}", color="red")
+            # If pull completed successfully
+            if return_code == 0:
+                if hasattr(self, 'docker_pull_dialog') and self.docker_pull_dialog is not None :
+                    self.docker_pull_dialog.set_pull_complete(True, "Docker image pulled successfully")
+            else:
+                error_msg = f"Failed to pull Docker image: {stderr}"
+                self.add_log(error_msg, color="red")
                 if hasattr(self, 'docker_pull_dialog') and self.docker_pull_dialog is not None :
                     self.docker_pull_dialog.set_pull_complete(False, error_msg)
-            
-            def on_pull_output(line):
-                # Process each line of output in real-time to update the dialog
-                if hasattr(self, 'docker_pull_dialog') and self.docker_pull_dialog is not None :
-                    self.docker_pull_dialog.update_pull_progress(line)
-            
-            # Start the Docker pull operation with real-time output processing
-            self.docker_handler.pull_image(on_pull_success, on_pull_error, on_pull_output)
-            
-            # Exit this method early - we'll continue after the pull completes
-            return
+        
+        def on_pull_error(error_msg):
+            self.add_log(f"Error pulling Docker image: {error_msg}", color="red")
+            if hasattr(self, 'docker_pull_dialog') and self.docker_pull_dialog is not None :
+                self.docker_pull_dialog.set_pull_complete(False, error_msg)
+        
+        def on_pull_output(line):
+            # Process each line of output in real-time to update the dialog
+            if hasattr(self, 'docker_pull_dialog') and self.docker_pull_dialog is not None :
+                self.docker_pull_dialog.update_pull_progress(line)
+        
+        # Always pull the latest image to ensure we have the most recent version
+        self.add_log("Pulling latest Docker image before container launch...", color="blue")
+        self.docker_handler.pull_image(on_pull_success, on_pull_error, on_pull_output)
+        
+        # Exit this method early - we'll continue after the pull completes
+        return
         
         # Update loading dialog with progress
         if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None :
@@ -2862,7 +2989,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
             
             # Update UI after launch
             self.post_launch_setup()
-            self.refresh_local_address()
+            self.refresh_node_info()
             self.plot_data()
             self.update_toggle_button_text()
             
@@ -3001,6 +3128,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     if hasattr(self, 'docker_pull_dialog') and self.docker_pull_dialog is not None:
         self.docker_pull_dialog.safe_close()
         # Remove the reference immediately
+
         self.docker_pull_dialog = None
     
     # Process events to ensure UI updates
@@ -3036,11 +3164,174 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
         # Process events to ensure dialog is visible and responsive
         QApplication.processEvents()
         
-        # Continue with container launch - use a short timer to ensure UI is updated first
-        QTimer.singleShot(100, lambda: self._perform_container_launch(container_name, volume_name))
+        # Continue with container launch after pull - use a short timer to ensure UI is updated first
+        QTimer.singleShot(100, lambda: self._perform_container_launch_after_pull(container_name, volume_name))
     else:
         # Show error notification
         self.toast.show_notification(NotificationType.ERROR, f"Failed to pull Docker image: {message}")
+
+  def _perform_container_launch_after_pull(self, container_name, volume_name):
+    """Perform the container launch operation after Docker pull is complete."""
+    try:
+        # Start loading indicator
+        self.loading_indicator.start()
+        
+        # Update loading dialog with progress
+        if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None :
+            self.launcher_dialog.update_progress("Launching Docker container...")
+        
+        # Define success callback for threaded operation
+        def on_launch_success(result):
+            stdout, stderr, return_code = result
+            if return_code != 0:
+                # Handle error case
+                error_msg = f"Failed to launch container: {stderr}"
+                self.add_log(error_msg, color="red")
+                self.toast.show_notification(NotificationType.ERROR, error_msg)
+                return
+            
+            # Update loading dialogs with progress    
+            if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None :
+                self.launcher_dialog.update_progress("Container launched, updating configuration...")
+            elif hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible():
+                self.startup_dialog.update_progress("Container launched, updating configuration...")
+            
+            # Update last used timestamp in config
+            from datetime import datetime
+            self.config_manager.update_last_used(container_name, datetime.now().isoformat())
+            
+            # Update volume name in config if it's not already set
+            container_config = self.config_manager.get_container(container_name)
+            if container_config and not container_config.volume:
+                self.config_manager.update_volume(container_name, volume_name)
+                self.add_log(f"Updated volume name in config: {volume_name}", debug=True)
+            
+            # Update loading dialogs with progress
+            if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None :
+                self.launcher_dialog.update_progress("Updating user interface...")
+            elif hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible():
+                self.startup_dialog.update_progress("Updating user interface...")
+            
+            # Update UI after launch
+            self.post_launch_setup()
+            self.refresh_node_info()
+            self.plot_data()
+            self.update_toggle_button_text()
+            
+            # Stop loading indicator
+            self.loading_indicator.stop()
+            
+            # Update loading dialogs with completion message
+            if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None :
+                self.launcher_dialog.update_progress("Container launched successfully!")
+            elif hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible():
+                self.startup_dialog.update_progress("Container launched successfully!")
+            
+            # Close the loading dialogs immediately
+            launcher_dialog_visible = hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None 
+            if launcher_dialog_visible:
+                self.launcher_dialog.safe_close()
+                # Schedule removal of the reference after a delay
+                QTimer.singleShot(500, lambda: setattr(self, 'launcher_dialog', None) if hasattr(self, 'launcher_dialog') else None)
+            
+            startup_dialog_visible = hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible()
+            if startup_dialog_visible:
+                self.startup_dialog.safe_close()
+                # Schedule removal of the reference after a delay
+                QTimer.singleShot(500, lambda: setattr(self, 'startup_dialog', None) if hasattr(self, 'startup_dialog') else None)
+            
+            # Show success notification
+            # Get node alias from config if available
+            node_display_name = container_name
+            container_config = self.config_manager.get_container(container_name)
+            if container_config and container_config.node_alias:
+                node_display_name = container_config.node_alias
+                self.toast.show_notification(NotificationType.SUCCESS, f"Node '{node_display_name}' launched successfully")
+            else:
+                self.toast.show_notification(NotificationType.SUCCESS, "Edge Node launched successfully")
+        
+        # Define error callback for threaded operation
+        def on_launch_error(error_msg):
+            # Stop loading indicator on error
+            self.loading_indicator.stop()
+            
+            # Check if this is a "container already exists" error
+            if "Conflict" in error_msg and "is already in use" in error_msg:
+                # Update loading dialogs with specific error message
+                if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None :
+                    self.launcher_dialog.update_progress("Container name conflict detected. Trying again with container removal...")
+                elif hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible():
+                    self.startup_dialog.update_progress("Container name conflict detected. Trying again with container removal...")
+                
+                # Try to forcefully remove the container and retry launch
+                try:
+                    # Extract container ID from error message if possible
+                    import re
+                    container_id_match = re.search(r'by container "([^"]+)"', error_msg)
+                    container_id = container_id_match.group(1) if container_id_match else None
+                    
+                    if container_id:
+                        self.add_log(f"Attempting to forcefully remove container with ID: {container_id}", color="yellow")
+                        # Run docker rm -f directly 
+                        remove_cmd = ['docker', 'rm', '-f', container_id]
+                        result = subprocess.run(remove_cmd, capture_output=True, text=True)
+                        if result.returncode == 0:
+                            self.add_log("Successfully removed conflicting container, retrying launch", color="blue")
+                            # Wait to ensure Docker has released the resources
+                            time.sleep(1)
+                            # Retry the launch
+                            self.docker_handler.launch_container_threaded(volume_name, on_launch_success, on_launch_error)
+                            return
+                except Exception as retry_err:
+                    self.add_log(f"Failed to resolve container conflict: {retry_err}", color="red")
+            
+            # Update loading dialogs with error message
+            if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None :
+                self.launcher_dialog.update_progress(f"Error: {error_msg}")
+            elif hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible():
+                self.startup_dialog.update_progress(f"Error: {error_msg}")
+            
+            # Close the loading dialogs immediately
+            launcher_dialog_visible = hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None 
+            if launcher_dialog_visible:
+                self.launcher_dialog.safe_close()
+                # Schedule removal of the reference after a delay
+                QTimer.singleShot(500, lambda: setattr(self, 'launcher_dialog', None) if hasattr(self, 'launcher_dialog') else None)
+            
+            startup_dialog_visible = hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible()
+            if startup_dialog_visible:
+                self.startup_dialog.safe_close()
+                # Schedule removal of the reference after a delay
+                QTimer.singleShot(500, lambda: setattr(self, 'startup_dialog', None) if hasattr(self, 'startup_dialog') else None)
+                
+            error_msg = f"Failed to launch container: {error_msg}"
+            self.add_log(error_msg, color="red")
+            self.toast.show_notification(NotificationType.ERROR, error_msg)
+        
+        # Launch the container in a thread (without pulling again)
+        self.docker_handler.launch_container_threaded(volume_name, on_launch_success, on_launch_error)
+        
+    except Exception as e:
+        # Stop loading indicator on error
+        self.loading_indicator.stop()
+        
+        # Close the startup dialog if it exists
+        startup_dialog_visible = hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible()
+        if startup_dialog_visible:
+            self.startup_dialog.safe_close()
+            # Schedule removal of the reference after a delay
+            QTimer.singleShot(500, lambda: setattr(self, 'startup_dialog', None) if hasattr(self, 'startup_dialog') else None)
+            
+        # Close the launcher dialog if it exists
+        launcher_dialog_visible = hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None 
+        if launcher_dialog_visible:
+            self.launcher_dialog.safe_close()
+            # Schedule removal of the reference after a delay
+            QTimer.singleShot(500, lambda: setattr(self, 'launcher_dialog', None) if hasattr(self, 'launcher_dialog') else None)
+            
+        error_msg = f"Failed to launch container: {str(e)}"
+        self.add_log(error_msg, color="red")
+        self.toast.show_notification(NotificationType.ERROR, error_msg)
   
   def refresh_container_list(self):
     """Refresh the container list in the combo box."""
@@ -3144,37 +3435,6 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
         self.add_log(f"Error checking if container exists in Docker: {str(e)}", debug=True, color="red")
         return False
 
-  def cleanup_container_configs(self):
-    """Update container configurations with their current status.
-    
-    This method checks which containers exist in Docker and updates their status in the config.
-    It does NOT remove any configurations to maintain persistence.
-    """
-    try:
-        # Get all containers from config
-        config_containers = self.config_manager.get_all_containers()
-        
-        # Track if any container status has changed
-        status_changed = False
-        
-        # Check each container's existence in Docker
-        for config_container in config_containers:
-            exists_in_docker = self.container_exists_in_docker(config_container.name)
-            
-            # Check if this is a status change (we could store previous status in the future)
-            # For now, just log the status
-            self.add_log(f"Container {config_container.name} exists in Docker: {exists_in_docker}", debug=True)
-            
-            # We could add a status field to ContainerConfig if needed in the future
-            # If we did, we would set status_changed = True if the status changed
-        
-        # Only refresh container list if status changed
-        # Since we don't track status changes yet, we'll comment this out
-        # if status_changed:
-        #     self.refresh_container_list()
-    except Exception as e:
-        self.add_log(f"Error updating container configurations: {str(e)}", debug=True, color="red")
-
   def post_launch_setup(self):
     """Execute post-launch setup tasks.
     
@@ -3200,22 +3460,6 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     QApplication.processEvents()
     
     return
-  
-  def clear_remote_connection(self):
-    """Clear the remote SSH connection."""
-    if hasattr(self, 'ssh_service'):
-        self.ssh_service.clear_configuration()
-        
-    # Reset the docker handler's remote command
-    if hasattr(self, 'docker_handler'):
-        self.docker_handler.remote_ssh_command = None
-        
-    # Update UI
-    self.add_log("Cleared remote connection")
-    
-    # Don't call _refresh_local_containers here to avoid circular dependency
-    return
-
 
 
   def update_resources_display(self):
@@ -3232,7 +3476,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
         self.storageDisplay.setText(f"{STORAGE_LABEL} {storage_info}")
         
         self.add_log("Updated system resources display", debug=True)
-        
+
     except Exception as e:
         self.add_log(f"Error updating resources display: {str(e)}", debug=True)
         # Set fallback values on error
@@ -3359,14 +3603,4 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
         self.add_log(f"Error during download or installation: {str(e)}")
         QMessageBox.critical(self, 'Update Failed', f'Failed to download or install the update: {str(e)}')
 
-  def manual_check_for_updates(self):
-    """Manually trigger an update check (e.g., from a menu or button)."""
-    if self.__update_in_progress or self.__update_dialog_shown:
-        self.toast.show_notification(
-            NotificationType.INFO, 
-            "Update check is already in progress. Please wait..."
-        )
-        return
-    
-    self.add_log("Manual update check requested by user", debug=True)
-    self.check_for_updates(verbose=True)
+

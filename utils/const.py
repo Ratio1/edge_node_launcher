@@ -20,7 +20,7 @@ E2_PEM_FILE = 'e2.pem'
 # ============================================================================
 DOCKER_VOLUME = 'ratio1_vol'
 DOCKER_IMAGE = 'ratio1/edge_node'
-DOCKER_TAG = 'mainnet'
+DOCKER_TAG = 'testnet'
 DOCKER_CONTAINER_NAME = 'r1node'
 DOCKER_VOLUME_PATH = '/edge_node/_local_cache'
 
@@ -32,6 +32,7 @@ MAX_HISTORY_QUEUE = 5 * 60 // 10  # 5 minutes @ 10 seconds each hb
 AUTO_UPDATE_CHECK_INTERVAL = 3600 # 1 hour
 DOCKER_IMAGE_AUTO_UPDATE_CHECK_INTERVAL = 300  # 5 minutes
 MAX_ALIAS_LENGTH = 15  # Maximum length for aliases (node name and authorized addresses)
+NODE_INFO_FAILURE_THRESHOLD = 5  # Number of consecutive get_node_info failures before container restart
 
 # ============================================================================
 # NODE REQUIREMENTS
@@ -159,7 +160,7 @@ DAPP_URLS = {
     'devnet': 'https://devnet-app.ratio1.ai/'
 }
 
-DEFAULT_ENVIRONMENT = 'mainnet'
+DEFAULT_ENVIRONMENT = 'testnet'
 
 # ============================================================================
 # TEMPLATES

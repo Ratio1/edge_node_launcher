@@ -18,7 +18,7 @@ from models.ConfigApp import ConfigApp
 from utils.const import DOCKER_VOLUME_PATH
 
 # Docker configuration
-DOCKER_IMAGE = "ratio1/edge_node:mainnet"
+DOCKER_IMAGE = "ratio1/edge_node:testnet"
 DOCKER_TAG = "latest"
 
 # Timeout configurations
@@ -494,40 +494,6 @@ class DockerCommandHandler:
                 stdout, stderr, return_code = thread.result_data
                 callback(stdout, stderr, return_code)
 
-    def check_and_pull_image_updates(self, image_name: str = None, tag: str = None) -> tuple:
-        """Check if a Docker image has updates available and pull if it does.
-        
-        Args:
-            image_name: Docker image name (defaults to DOCKER_IMAGE)
-            tag: Docker image tag (defaults to DOCKER_TAG)
-            
-        Returns:
-            tuple: (was_updated, message)
-                was_updated: True if the image was updated, False otherwise
-                message: Informational message about what happened
-        """
-        # Use default if not specified
-        image_name = image_name or DOCKER_IMAGE
-        tag = tag or DOCKER_TAG
-        
-        full_image_name = f"{image_name}:{tag}"
-        
-        # Check if an update is available
-        check_cmd = ['docker', 'pull', '--quiet', full_image_name]
-        stdout, stderr, return_code = self.execute_command(check_cmd)
-        
-        # If we got output and command was successful, an update is available
-        if return_code == 0 and stdout.strip() and "Image is up to date" not in stderr:
-            # Pull the updated image
-            pull_cmd = ['docker', 'pull', full_image_name]
-            pull_stdout, pull_stderr, pull_return_code = self.execute_command(pull_cmd)
-            
-            if pull_return_code == 0:
-                return (True, f"Docker image {full_image_name} updated successfully")
-            else:
-                return (False, f"Failed to update Docker image: {pull_stderr}")
-        else:
-            return (False, f"No updates available for Docker image {full_image_name}")
 
     def launch_container(self, volume_name: str = None):
         """Launch the Docker container with the specified volume name.
