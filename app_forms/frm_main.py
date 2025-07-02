@@ -140,6 +140,9 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     self.__update_in_progress = False
     self.__update_dialog_shown = False
     
+    # Track Docker pull state to prevent concurrent pulls
+    self.__docker_pull_in_progress = False
+    
     self.__version__ = __version__
     self.__last_timesteps = []
     self._icon = get_icon_from_base64(ICON_BASE64)
@@ -1200,6 +1203,11 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
 
   def plot_data(self):
     """Plot container metrics data."""
+    # Skip plotting if Docker pull is in progress to avoid conflicts
+    if self.__docker_pull_in_progress:
+        self.add_log("Docker pull in progress, skipping plot data", debug=True)
+        return
+        
     # Get the currently selected container
     container_name = self.container_combo.currentText()
     if not container_name:
@@ -1359,6 +1367,11 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
 
   def refresh_node_info(self):
     """Refresh the node information by fetching fresh data from the container and updating the UI."""
+    # Skip refresh if Docker pull is in progress to avoid conflicts
+    if self.__docker_pull_in_progress:
+        self.add_log("Docker pull in progress, skipping node info refresh", debug=True)
+        return
+        
     # Get the current container
     current_index = self.container_combo.currentIndex() 
     if current_index < 0:
@@ -1489,6 +1502,11 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
         on_error: Error callback  
     """
     try:
+      # Check if a main Docker pull is already in progress
+      if self.__docker_pull_in_progress:
+        self.add_log(f"Main Docker pull already in progress, skipping restart of {container_name}", color="yellow")
+        return
+      
       def on_pull_success(result):
         stdout, stderr, return_code = result
         if return_code == 0:
@@ -1788,8 +1806,12 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
 
   def refresh_all(self):
     """Refresh all data and UI elements."""
+    if self.__docker_pull_in_progress:
+        self.add_log("Docker pull in progress, skipping refresh all", debug=True)
+        return
     self.add_log('Refreshing', debug=True)
-    # Only auto-restart if container is not running, button is enabled, AND user didn't intentionally stop it
+
+    # Only auto-restart if container is not running, button is enabled, user didn't intentionally stop it, AND no pull is in progress
     if not self.is_container_running() and self.toggleButton.isEnabled() == True and not self.user_stopped_container:
       self.add_log("Container is supposed to run. Starting it now...", debug=True, color="red")
       self._start_container()
@@ -2897,7 +2919,26 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
                 self.launcher_dialog.update_progress(f"Removing existing container '{container_name}' before launch...")
             self.add_log(f"Container {container_name} already exists, removing it first", color="yellow")
         
+        # Check if Docker pull is already in progress
+        if self.__docker_pull_in_progress:
+            self.add_log(f"Docker pull already in progress, skipping launch of {container_name}", color="yellow")
+            
+            # Close any loading dialogs that might have been opened
+            if hasattr(self, 'launcher_dialog') and self.launcher_dialog is not None:
+                self.launcher_dialog.safe_close()
+                QTimer.singleShot(500, lambda: setattr(self, 'launcher_dialog', None) if hasattr(self, 'launcher_dialog') else None)
+            
+            if hasattr(self, 'startup_dialog') and self.startup_dialog is not None and self.startup_dialog.isVisible():
+                self.startup_dialog.safe_close()
+                QTimer.singleShot(500, lambda: setattr(self, 'startup_dialog', None) if hasattr(self, 'startup_dialog') else None)
+            
+            # Stop loading indicator
+            self.loading_indicator.stop()
+            return
+        
         # Always pull the latest Docker image before launching
+        self.__docker_pull_in_progress = True
+        
         # Stop the loading indicator since we're switching to pull dialog
         self.loading_indicator.stop()
         
@@ -2913,8 +2954,7 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
         # Connect the pull_complete signal to handle completion
         self.docker_pull_dialog.pull_complete.connect(self._on_docker_pull_complete)
         
-        # Store volume_name for later use after pull completes
-        self._pending_volume_name = volume_name
+        # The container launch will continue automatically after pull completes
         
         # Show the dialog
         self.docker_pull_dialog.show()
@@ -3115,6 +3155,9 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
         success: Whether the pull was successful
         message: Success or error message
     """
+    # Reset the pull state first
+    self.__docker_pull_in_progress = False
+    
     # Log the result
     if success:
         self.add_log("Docker image pulled successfully", color="green")
@@ -3128,44 +3171,56 @@ class EdgeNodeLauncher(QWidget, _DockerUtilsMixin, _UpdaterMixin, _SystemResourc
     if hasattr(self, 'docker_pull_dialog') and self.docker_pull_dialog is not None:
         self.docker_pull_dialog.safe_close()
         # Remove the reference immediately
-
         self.docker_pull_dialog = None
     
     # Process events to ensure UI updates
     QApplication.processEvents()
     
-    # If pull was successful, continue with container launch
+    # If pull was successful, continue with the currently selected container launch
     if success:
-        # Show the launcher dialog again
-        container_name = self.docker_handler.container_name
-        volume_name = self._pending_volume_name
-        
-        # Get node alias from config if available for better user feedback
-        container_config = self.config_manager.get_container(container_name)
-        node_alias = None
-        if container_config and container_config.node_alias:
-            node_alias = container_config.node_alias
-            message = f"Please wait while node '{node_alias}' is being launched..."
+        # Get the currently selected container to continue the launch
+        current_index = self.container_combo.currentIndex()
+        if current_index >= 0:
+            container_name = self.container_combo.itemData(current_index)
+            if container_name:
+                # Get volume name from config or generate one
+                container_config = self.config_manager.get_container(container_name) 
+                if container_config and container_config.volume:
+                    volume_name = container_config.volume
+                else:
+                    from utils.docker_utils import get_volume_name
+                    volume_name = get_volume_name(container_name)
+                
+                # Show the launcher dialog for the container launch
+                # Get node alias from config if available for better user feedback
+                node_alias = None
+                if container_config and container_config.node_alias:
+                    node_alias = container_config.node_alias
+                    message = f"Please wait while node '{node_alias}' is being launched..."
+                else:
+                    message = "Please wait while Edge Node is being launched..."
+                    
+                # Show loading dialog for launching operation
+                self.launcher_dialog = LoadingDialog(
+                    self, 
+                    title="Launching Node", 
+                    message=message,
+                    size=50
+                )
+                self.launcher_dialog.show()
+                
+                # Update message to indicate starting the launch process
+                self.launcher_dialog.update_progress("Preparing to launch Docker container...")
+                
+                # Process events to ensure dialog is visible and responsive
+                QApplication.processEvents()
+                
+                # Continue with container launch after pull - use a short timer to ensure UI is updated first
+                QTimer.singleShot(100, lambda: self._perform_container_launch_after_pull(container_name, volume_name))
+            else:
+                self.add_log("No container selected after Docker pull completion", color="yellow")
         else:
-            message = "Please wait while Edge Node is being launched..."
-            
-        # Show loading dialog for launching operation
-        self.launcher_dialog = LoadingDialog(
-            self, 
-            title="Launching Node", 
-            message=message,
-            size=50
-        )
-        self.launcher_dialog.show()
-        
-        # Update message to indicate starting the launch process
-        self.launcher_dialog.update_progress("Preparing to launch Docker container...")
-        
-        # Process events to ensure dialog is visible and responsive
-        QApplication.processEvents()
-        
-        # Continue with container launch after pull - use a short timer to ensure UI is updated first
-        QTimer.singleShot(100, lambda: self._perform_container_launch_after_pull(container_name, volume_name))
+            self.add_log("No container selected after Docker pull completion", color="yellow")
     else:
         # Show error notification
         self.toast.show_notification(NotificationType.ERROR, f"Failed to pull Docker image: {message}")
