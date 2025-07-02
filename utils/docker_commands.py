@@ -18,7 +18,7 @@ from models.ConfigApp import ConfigApp
 from utils.const import DOCKER_VOLUME_PATH
 
 # Docker configuration
-DOCKER_IMAGE = "ratio1/edge_node:testnet"
+DOCKER_IMAGE = "ratio1/edge_node:mainnet"
 DOCKER_TAG = "latest"
 
 # Timeout configurations

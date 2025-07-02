@@ -20,7 +20,7 @@ E2_PEM_FILE = 'e2.pem'
 # ============================================================================
 DOCKER_VOLUME = 'ratio1_vol'
 DOCKER_IMAGE = 'ratio1/edge_node'
-DOCKER_TAG = 'testnet'
+DOCKER_TAG = 'mainnet'
 DOCKER_CONTAINER_NAME = 'r1node'
 DOCKER_VOLUME_PATH = '/edge_node/_local_cache'
 
@@ -160,7 +160,7 @@ DAPP_URLS = {
     'devnet': 'https://devnet-app.ratio1.ai/'
 }
 
-DEFAULT_ENVIRONMENT = 'testnet'
+DEFAULT_ENVIRONMENT = 'mainnet'
 
 # ============================================================================
 # TEMPLATES
